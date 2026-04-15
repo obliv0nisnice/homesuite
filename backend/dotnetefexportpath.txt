@@ -1,0 +1,5 @@
+export PATH="$PATH:/home/jakob/.dotnet/tools"
+
+
+export DOTNET_ROOT=/nix/store/hlibrz46y7irr7s1ls85jdrbqpmyyhly-dotnet-sdk-8.0.418/share/dotnet
+export PATH="$PATH:$HOME/.dotnet/tools"

@@ -1,0 +1,94 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0": {
+      "HomeSuite.Domain/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "compile": {
+          "bin/placeholder/HomeSuite.Domain.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeSuite.Domain.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "HomeSuite.Domain/1.0.0": {
+      "type": "project",
+      "path": "../HomeSuite.Domain/HomeSuite.Domain.csproj",
+      "msbuildProject": "../HomeSuite.Domain/HomeSuite.Domain.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0": [
+      "HomeSuite.Domain >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "/home/jakob/.nuget/packages/": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "/home/jakob/homesuite/backend/src/HomeSuite.Application/HomeSuite.Application.csproj",
+      "projectName": "HomeSuite.Application",
+      "projectPath": "/home/jakob/homesuite/backend/src/HomeSuite.Application/HomeSuite.Application.csproj",
+      "packagesPath": "/home/jakob/.nuget/packages/",
+      "outputPath": "/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/",
+      "projectStyle": "PackageReference",
+      "configFilePaths": [
+        "/home/jakob/.nuget/NuGet/NuGet.Config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0"
+      ],
+      "sources": {
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "projectReferences": {
+            "/home/jakob/homesuite/backend/src/HomeSuite.Domain/HomeSuite.Domain.csproj": {
+              "projectPath": "/home/jakob/homesuite/backend/src/HomeSuite.Domain/HomeSuite.Domain.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      }
+    },
+    "frameworks": {
+      "net8.0": {
+        "targetAlias": "net8.0",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "/nix/store/hlibrz46y7irr7s1ls85jdrbqpmyyhly-dotnet-sdk-8.0.418/share/dotnet/sdk/8.0.418/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

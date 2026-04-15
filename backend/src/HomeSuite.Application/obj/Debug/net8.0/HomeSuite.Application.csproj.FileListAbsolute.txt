@@ -1,0 +1,15 @@
+/home/jakob/homesuite/backend/src/HomeSuite.Application/bin/Debug/net8.0/HomeSuite.Application.deps.json
+/home/jakob/homesuite/backend/src/HomeSuite.Application/bin/Debug/net8.0/HomeSuite.Application.dll
+/home/jakob/homesuite/backend/src/HomeSuite.Application/bin/Debug/net8.0/HomeSuite.Application.pdb
+/home/jakob/homesuite/backend/src/HomeSuite.Application/bin/Debug/net8.0/HomeSuite.Domain.dll
+/home/jakob/homesuite/backend/src/HomeSuite.Application/bin/Debug/net8.0/HomeSuite.Domain.pdb
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.csproj.AssemblyReference.cache
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.GeneratedMSBuildEditorConfig.editorconfig
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.AssemblyInfoInputs.cache
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.AssemblyInfo.cs
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.csproj.CoreCompileInputs.cache
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuit.896BECDF.Up2Date
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.dll
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/refint/HomeSuite.Application.dll
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.pdb
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/ref/HomeSuite.Application.dll
