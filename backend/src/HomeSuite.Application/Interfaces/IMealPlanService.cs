@@ -9,4 +9,6 @@ public interface IMealPlanService
     Task<MealPlanDto> CreateAsync(CreateMealPlanRequest request, CancellationToken cancellationToken = default);
     Task<MealPlanDto?> UpdateAsync(Guid id, UpdateMealPlanRequest request, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+    Task CompleteAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<MealPlanWeekSummaryDto> GetWeekSummaryAsync(DateOnly weekStartDate, CancellationToken cancellationToken = default);
 }

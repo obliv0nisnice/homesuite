@@ -14,7 +14,21 @@ public class ShoppingListsController : ControllerBase
     {
         _shoppingListService = shoppingListService;
     }
-
+[HttpGet("{shoppingListId:guid}/store-summaries")]
+public async Task<ActionResult<IEnumerable<ShoppingListStoreSummaryDto>>> GetStoreSummaries(
+    Guid shoppingListId,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        var result = await _shoppingListService.GetStoreSummariesAsync(shoppingListId, cancellationToken);
+        return Ok(result);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return BadRequest(new { message = ex.Message });
+    }
+}
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ShoppingListDto>>> GetAll(CancellationToken cancellationToken)
     {
@@ -130,6 +144,10 @@ public class ShoppingListsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpDelete("{shoppingListId:guid}/items/{itemId:guid}")]
@@ -164,5 +182,134 @@ public class ShoppingListsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    [HttpPost("{shoppingListId:guid}/add-mealplan-week")]
+    public async Task<ActionResult<ShoppingListDto>> AddMealPlanWeekToShoppingList(
+        Guid shoppingListId,
+        [FromQuery] DateOnly weekStartDate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var updatedShoppingList = await _shoppingListService.AddMealPlanWeekToShoppingListAsync(
+                shoppingListId,
+                weekStartDate,
+                cancellationToken);
+
+            return Ok(updatedShoppingList);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/complete")]
+    public async Task<IActionResult> Complete(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _shoppingListService.CompleteShoppingListAsync(id, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("{shoppingListId:guid}/items/{shoppingItemId:guid}/price-options")]
+    public async Task<ActionResult<IEnumerable<ShoppingItemPriceOptionDto>>> GetPriceOptions(
+        Guid shoppingListId,
+        Guid shoppingItemId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _shoppingListService.GetPriceOptionsAsync(shoppingListId, shoppingItemId, cancellationToken);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{shoppingListId:guid}/items/{shoppingItemId:guid}/price-options")]
+    public async Task<ActionResult<ShoppingItemPriceOptionDto>> AddPriceOption(
+        Guid shoppingListId,
+        Guid shoppingItemId,
+        [FromBody] CreateShoppingItemPriceOptionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var created = await _shoppingListService.AddPriceOptionAsync(shoppingListId, shoppingItemId, request, cancellationToken);
+            return Ok(created);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPut("{shoppingListId:guid}/items/{shoppingItemId:guid}/price-options/{priceOptionId:guid}")]
+    public async Task<ActionResult<ShoppingItemPriceOptionDto>> UpdatePriceOption(
+        Guid shoppingListId,
+        Guid shoppingItemId,
+        Guid priceOptionId,
+        [FromBody] UpdateShoppingItemPriceOptionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var updated = await _shoppingListService.UpdatePriceOptionAsync(
+                shoppingListId,
+                shoppingItemId,
+                priceOptionId,
+                request,
+                cancellationToken);
+
+            if (updated is null)
+            {
+                return NotFound(new { message = "Preisoption nicht gefunden." });
+            }
+
+            return Ok(updated);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("{shoppingListId:guid}/items/{shoppingItemId:guid}/price-options/{priceOptionId:guid}")]
+    public async Task<IActionResult> DeletePriceOption(
+        Guid shoppingListId,
+        Guid shoppingItemId,
+        Guid priceOptionId,
+        CancellationToken cancellationToken)
+    {
+        var deleted = await _shoppingListService.DeletePriceOptionAsync(
+            shoppingListId,
+            shoppingItemId,
+            priceOptionId,
+            cancellationToken);
+
+        if (!deleted)
+        {
+            return NotFound(new { message = "Preisoption nicht gefunden." });
+        }
+
+        return NoContent();
     }
 }

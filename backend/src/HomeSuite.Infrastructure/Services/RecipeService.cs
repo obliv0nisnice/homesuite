@@ -24,6 +24,7 @@ public class RecipeService : IRecipeService
                 Id = x.Id,
                 Name = x.Name,
                 Description = x.Description,
+                BaseServings = x.BaseServings,
                 Ingredients = x.Ingredients
                     .OrderBy(i => i.Name)
                     .Select(i => new RecipeIngredientDto
@@ -48,6 +49,7 @@ public class RecipeService : IRecipeService
                 Id = x.Id,
                 Name = x.Name,
                 Description = x.Description,
+                BaseServings = x.BaseServings,
                 Ingredients = x.Ingredients
                     .OrderBy(i => i.Name)
                     .Select(i => new RecipeIngredientDto
@@ -65,12 +67,13 @@ public class RecipeService : IRecipeService
 
     public async Task<RecipeDto> CreateAsync(CreateRecipeRequest request, CancellationToken cancellationToken = default)
     {
-        ValidateRecipe(request.Name);
+        ValidateRecipe(request.Name, request.BaseServings);
 
         var recipe = new Recipe
         {
             Name = request.Name.Trim(),
-            Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim()
+            Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            BaseServings = request.BaseServings
         };
 
         _dbContext.Recipes.Add(recipe);
@@ -81,13 +84,14 @@ public class RecipeService : IRecipeService
             Id = recipe.Id,
             Name = recipe.Name,
             Description = recipe.Description,
+            BaseServings = recipe.BaseServings,
             Ingredients = []
         };
     }
 
     public async Task<RecipeDto?> UpdateAsync(Guid id, UpdateRecipeRequest request, CancellationToken cancellationToken = default)
     {
-        ValidateRecipe(request.Name);
+        ValidateRecipe(request.Name, request.BaseServings);
 
         var recipe = await _dbContext.Recipes
             .Include(x => x.Ingredients)
@@ -100,6 +104,7 @@ public class RecipeService : IRecipeService
 
         recipe.Name = request.Name.Trim();
         recipe.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        recipe.BaseServings = request.BaseServings;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -108,6 +113,7 @@ public class RecipeService : IRecipeService
             Id = recipe.Id,
             Name = recipe.Name,
             Description = recipe.Description,
+            BaseServings = recipe.BaseServings,
             Ingredients = recipe.Ingredients
                 .OrderBy(x => x.Name)
                 .Select(x => new RecipeIngredientDto
@@ -215,11 +221,16 @@ public class RecipeService : IRecipeService
         return true;
     }
 
-    private static void ValidateRecipe(string name)
+    private static void ValidateRecipe(string name, int baseServings)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new ArgumentException("Der Rezeptname ist erforderlich.");
+        }
+
+        if (baseServings <= 0)
+        {
+            throw new ArgumentException("Die Basis-Portionen müssen größer als 0 sein.");
         }
     }
 

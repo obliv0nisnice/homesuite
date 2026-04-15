@@ -17,3 +17,4 @@
 /home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/obj/Debug/net8.0/HomeSuite.Infrastructure.pdb
 /home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/obj/Debug/net8.0/HomeSuite.Infrastructure.genruntimeconfig.cache
 /home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/obj/Debug/net8.0/ref/HomeSuite.Infrastructure.dll
+/home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/obj/Debug/net8.0/HomeSuite.Infrastructure.sourcelink.json

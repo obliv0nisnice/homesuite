@@ -13,3 +13,4 @@
 /home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/refint/HomeSuite.Application.dll
 /home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.pdb
 /home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/ref/HomeSuite.Application.dll
+/home/jakob/homesuite/backend/src/HomeSuite.Application/obj/Debug/net8.0/HomeSuite.Application.sourcelink.json

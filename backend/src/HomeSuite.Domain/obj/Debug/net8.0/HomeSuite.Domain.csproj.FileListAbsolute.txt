@@ -9,3 +9,4 @@
 /home/jakob/homesuite/backend/src/HomeSuite.Domain/obj/Debug/net8.0/refint/HomeSuite.Domain.dll
 /home/jakob/homesuite/backend/src/HomeSuite.Domain/obj/Debug/net8.0/HomeSuite.Domain.pdb
 /home/jakob/homesuite/backend/src/HomeSuite.Domain/obj/Debug/net8.0/ref/HomeSuite.Domain.dll
+/home/jakob/homesuite/backend/src/HomeSuite.Domain/obj/Debug/net8.0/HomeSuite.Domain.sourcelink.json

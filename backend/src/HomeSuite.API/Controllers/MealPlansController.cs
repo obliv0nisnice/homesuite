@@ -8,6 +8,16 @@ namespace HomeSuite.API.Controllers;
 [Route("api/[controller]")]
 public class MealPlansController : ControllerBase
 {
+    [HttpGet("week-summary")]
+    public async Task<ActionResult<MealPlanWeekSummaryDto>> GetWeekSummary(
+        [FromQuery] DateOnly weekStartDate,
+        CancellationToken cancellationToken)
+    {
+        var summary = await _mealPlanService.GetWeekSummaryAsync(weekStartDate, cancellationToken);
+        return Ok(summary);
+    }
+
+
     private readonly IMealPlanService _mealPlanService;
 
     public MealPlansController(IMealPlanService mealPlanService)
@@ -93,5 +103,19 @@ public class MealPlansController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    [HttpPost("{id:guid}/complete")]
+    public async Task<IActionResult> Complete(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _mealPlanService.CompleteAsync(id, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }

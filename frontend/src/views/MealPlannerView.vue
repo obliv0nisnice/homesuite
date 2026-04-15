@@ -2,11 +2,32 @@
 import { computed, onMounted, ref } from 'vue'
 import { apiFetch } from '@/services/api'
 
+type MealPlanWeekIngredient = {
+  name: string
+  requiredQuantity: number
+  inventoryQuantity: number
+  missingQuantity: number
+  unit: string
+}
+
+type MealPlanWeekSummary = {
+  weekStartDate: string
+  weekEndDate: string
+  ingredients: MealPlanWeekIngredient[]
+}
+
 type RecipeOption = {
   id: string
   name: string
   description?: string | null
   ingredients: Array<unknown>
+}
+
+type ShoppingListOption = {
+  id: string
+  name: string
+  createdAt: string
+  items?: Array<unknown>
 }
 
 type MealPlan = {
@@ -15,6 +36,7 @@ type MealPlan = {
   mealType: string
   servings: number
   notes?: string | null
+  isCompleted: boolean
   recipeId: string
   recipeName: string
 }
@@ -26,12 +48,15 @@ type DayColumn = {
 }
 
 const recipes = ref<RecipeOption[]>([])
+const shoppingLists = ref<ShoppingListOption[]>([])
 const mealPlans = ref<MealPlan[]>([])
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
+const weekSummary = ref<MealPlanWeekSummary | null>(null)
 
 const weekOffset = ref(0)
+const selectedShoppingListId = ref('')
 
 const newMealPlan = ref({
   date: '',
@@ -52,11 +77,6 @@ const editMealPlan = ref({
 
 function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10)
-}
-
-function parseLocalDate(dateString: string) {
-  const [year, month, day] = dateString.split('-').map(Number)
-  return new Date(year, (month ?? 1) - 1, day ?? 1)
 }
 
 function getStartOfWeek(baseDate: Date) {
@@ -81,6 +101,8 @@ const currentWeekStart = computed(() => {
 })
 
 const currentWeekEnd = computed(() => addDays(currentWeekStart.value, 6))
+
+const currentWeekStartKey = computed(() => toDateInputValue(currentWeekStart.value))
 
 const weekLabel = computed(() => {
   const start = currentWeekStart.value.toLocaleDateString()
@@ -115,18 +137,26 @@ async function loadData() {
   loading.value = true
   error.value = ''
   success.value = ''
+  weekSummary.value = loadedWeekSummary
 
   try {
-    const [loadedRecipes, loadedMealPlans] = await Promise.all([
+    const [loadedRecipes, loadedMealPlans, loadedShoppingLists] = await Promise.all([
       apiFetch<RecipeOption[]>('/recipes'),
       apiFetch<MealPlan[]>('/mealplans'),
+      apiFetch<ShoppingListOption[]>('/shoppinglists'),
+      apiFetch<MealPlanWeekSummary>(`/mealplans/week-summary?weekStartDate=${currentWeekStartKey.value}`),
     ])
 
     recipes.value = loadedRecipes
     mealPlans.value = loadedMealPlans
+    shoppingLists.value = loadedShoppingLists
 
     if (!newMealPlan.value.recipeId && loadedRecipes.length > 0) {
       newMealPlan.value.recipeId = loadedRecipes[0].id
+    }
+
+    if (!selectedShoppingListId.value && loadedShoppingLists.length > 0) {
+      selectedShoppingListId.value = loadedShoppingLists[0].id
     }
 
     if (!newMealPlan.value.date) {
@@ -239,16 +269,66 @@ async function deleteMealPlan(id: string) {
   }
 }
 
-function previousWeek() {
+async function completeMealPlan(id: string) {
+  error.value = ''
+  success.value = ''
+
+  try {
+    await apiFetch<void>(`/mealplans/${id}/complete`, {
+      method: 'POST',
+    })
+
+    success.value = 'Mahlzeit wurde als gekocht markiert und vom Inventar abgezogen.'
+    await loadData()
+  } catch (err) {
+    console.error(err)
+    error.value =
+      err instanceof Error
+        ? err.message
+        : 'Meal Plan konnte nicht abgeschlossen werden.'
+  }
+}
+
+async function addWeekToShoppingList() {
+  if (!selectedShoppingListId.value) {
+    error.value = 'Bitte zuerst eine Einkaufsliste auswählen.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+
+  try {
+    await apiFetch(
+      `/shoppinglists/${selectedShoppingListId.value}/add-mealplan-week?weekStartDate=${currentWeekStartKey.value}`,
+      {
+        method: 'POST',
+      },
+    )
+
+    success.value = 'Die aktuelle Woche wurde zur Einkaufsliste hinzugefügt.'
+  } catch (err) {
+    console.error(err)
+    error.value =
+      err instanceof Error
+        ? err.message
+        : 'Die Woche konnte nicht in die Einkaufsliste übernommen werden.'
+  }
+}
+
+async function previousWeek() {
   weekOffset.value -= 1
+  await loadData()
 }
 
-function nextWeek() {
+async function nextWeek() {
   weekOffset.value += 1
+  await loadData()
 }
 
-function currentWeek() {
+async function currentWeek() {
   weekOffset.value = 0
+  await loadData()
 }
 
 onMounted(() => {
@@ -301,6 +381,58 @@ onMounted(() => {
     </div>
 
     <div class="card">
+      <h3>Woche in Einkaufsliste übernehmen</h3>
+
+      <div class="form">
+        <div><strong>Woche:</strong> {{ weekLabel }}</div>
+
+        <select v-model="selectedShoppingListId">
+          <option disabled value="">Einkaufsliste wählen</option>
+          <option v-for="list in shoppingLists" :key="list.id" :value="list.id">
+            {{ list.name }}
+          </option>
+        </select>
+
+        <button
+          type="button"
+          :disabled="!selectedShoppingListId"
+          @click="addWeekToShoppingList"
+        >
+          Ganze Woche in Einkaufsliste übernehmen
+        </button>
+      </div>
+    </div>
+
+    <div class="card" v-if="weekSummary">
+  <h3>Wochenbedarf mit Inventar-Abgleich</h3>
+
+  <table v-if="weekSummary.ingredients.length > 0">
+    <thead>
+      <tr>
+        <th>Zutat</th>
+        <th>Benötigt</th>
+        <th>Im Inventar</th>
+        <th>Fehlt</th>
+        <th>Einheit</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr v-for="ingredient in weekSummary.ingredients" :key="`${ingredient.name}-${ingredient.unit}`">
+        <td>{{ ingredient.name }}</td>
+        <td>{{ ingredient.requiredQuantity }}</td>
+        <td>{{ ingredient.inventoryQuantity }}</td>
+        <td :class="{ missing: ingredient.missingQuantity > 0, covered: ingredient.missingQuantity <= 0 }">
+          {{ ingredient.missingQuantity }}
+        </td>
+        <td>{{ ingredient.unit }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p v-else>Für diese Woche gibt es noch keinen Zutatenbedarf.</p>
+</div>
+
+    <div class="card">
       <div class="week-header">
         <div>
           <h3>Wochenansicht</h3>
@@ -322,7 +454,12 @@ onMounted(() => {
           </div>
 
           <div v-if="day.items.length > 0" class="meal-list">
-            <div v-for="mealPlan in day.items" :key="mealPlan.id" class="meal-card">
+            <div
+              v-for="mealPlan in day.items"
+              :key="mealPlan.id"
+              class="meal-card"
+              :class="{ completed: mealPlan.isCompleted }"
+            >
               <template v-if="editingMealPlanId === mealPlan.id">
                 <div class="form compact-form">
                   <input v-model="editMealPlan.date" type="date" />
@@ -357,15 +494,26 @@ onMounted(() => {
                   <span>{{ mealPlan.servings }} Portionen</span>
                 </div>
 
-                <div class="meal-title">{{ mealPlan.recipeName }}</div>
+                <div class="meal-title">
+                  {{ mealPlan.recipeName }}
+                  <span v-if="mealPlan.isCompleted" class="status">· gekocht</span>
+                </div>
 
                 <div v-if="mealPlan.notes" class="meal-notes">
                   {{ mealPlan.notes }}
                 </div>
 
                 <div class="actions">
-                  <button @click="startEditMealPlan(mealPlan)">Bearbeiten</button>
+                  <button @click="startEditMealPlan(mealPlan)" :disabled="mealPlan.isCompleted">
+                    Bearbeiten
+                  </button>
                   <button @click="deleteMealPlan(mealPlan.id)">Löschen</button>
+                  <button
+                    @click="completeMealPlan(mealPlan.id)"
+                    :disabled="mealPlan.isCompleted"
+                  >
+                    Als gekocht markieren
+                  </button>
                 </div>
               </template>
             </div>
@@ -379,6 +527,16 @@ onMounted(() => {
 </template>
 
 <style scoped>
+
+.missing {
+  color: #b00020;
+  font-weight: 600;
+}
+
+.covered {
+  color: #0a7a2f;
+  font-weight: 600;
+}
 .card {
   border: 1px solid #ddd;
   border-radius: 8px;
@@ -463,6 +621,11 @@ textarea {
   padding: 10px;
 }
 
+.meal-card.completed {
+  opacity: 0.75;
+  background: #f2f8f2;
+}
+
 .meal-topline {
   display: flex;
   justify-content: space-between;
@@ -473,6 +636,11 @@ textarea {
 .meal-title {
   font-weight: 600;
   margin-bottom: 6px;
+}
+
+.status {
+  font-weight: 400;
+  color: #0a7a2f;
 }
 
 .meal-notes {

@@ -9,6 +9,8 @@
         <RouterLink to="/shopping-lists">Einkaufsliste</RouterLink>
         <RouterLink to="/recipes">Rezepte</RouterLink>
         <RouterLink to="/meal-planner">Meal Planner</RouterLink>
+        <RouterLink to="/inventory">Inventar</RouterLink>
+        <RouterLink to="/catalog">Katalog</RouterLink>
       </nav>
     </aside>
 

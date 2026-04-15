@@ -22,6 +22,42 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("HomeSuite.Domain.Entities.CatalogItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BrandHint")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("DefaultUnit")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<bool>("IsStaple")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SearchTerm")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CatalogItems");
+                });
+
             modelBuilder.Entity("HomeSuite.Domain.Entities.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -43,6 +79,34 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("HomeSuite.Domain.Entities.InventoryItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InventoryItems");
+                });
+
             modelBuilder.Entity("HomeSuite.Domain.Entities.MealPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -51,6 +115,9 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
 
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("MealType")
                         .IsRequired()
@@ -79,6 +146,9 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<int>("BaseServings")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Description")
                         .HasMaxLength(4000)
@@ -129,6 +199,21 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("ActualTotalPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid?>("CatalogItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("EstimatedTotalPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal?>("EstimatedUnitPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("InventoryQuantityUsed")
+                        .HasColumnType("numeric(12,2)");
+
                     b.Property<bool>("IsChecked")
                         .HasColumnType("boolean");
 
@@ -137,11 +222,22 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<decimal>("PurchasedQuantity")
+                        .HasColumnType("numeric(12,2)");
+
                     b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("RequiredQuantity")
                         .HasColumnType("numeric(12,2)");
 
                     b.Property<Guid>("ShoppingListId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Unit")
                         .IsRequired()
@@ -150,9 +246,53 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CatalogItemId");
+
                     b.HasIndex("ShoppingListId");
 
                     b.ToTable("ShoppingItems");
+                });
+
+            modelBuilder.Entity("HomeSuite.Domain.Entities.ShoppingItemPriceOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsAvailable")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("ProductUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("ShoppingItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StoreName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("TotalPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShoppingItemId");
+
+                    b.ToTable("ShoppingItemPriceOptions");
                 });
 
             modelBuilder.Entity("HomeSuite.Domain.Entities.ShoppingList", b =>
@@ -228,13 +368,31 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("HomeSuite.Domain.Entities.ShoppingItem", b =>
                 {
+                    b.HasOne("HomeSuite.Domain.Entities.CatalogItem", "CatalogItem")
+                        .WithMany()
+                        .HasForeignKey("CatalogItemId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("HomeSuite.Domain.Entities.ShoppingList", "ShoppingList")
                         .WithMany("Items")
                         .HasForeignKey("ShoppingListId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("CatalogItem");
+
                     b.Navigation("ShoppingList");
+                });
+
+            modelBuilder.Entity("HomeSuite.Domain.Entities.ShoppingItemPriceOption", b =>
+                {
+                    b.HasOne("HomeSuite.Domain.Entities.ShoppingItem", "ShoppingItem")
+                        .WithMany("PriceOptions")
+                        .HasForeignKey("ShoppingItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ShoppingItem");
                 });
 
             modelBuilder.Entity("HomeSuite.Domain.Entities.Transaction", b =>
@@ -251,6 +409,11 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("HomeSuite.Domain.Entities.Recipe", b =>
                 {
                     b.Navigation("Ingredients");
+                });
+
+            modelBuilder.Entity("HomeSuite.Domain.Entities.ShoppingItem", b =>
+                {
+                    b.Navigation("PriceOptions");
                 });
 
             modelBuilder.Entity("HomeSuite.Domain.Entities.ShoppingList", b =>

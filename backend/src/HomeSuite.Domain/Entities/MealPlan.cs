@@ -7,6 +7,7 @@ public class MealPlan
     public string MealType { get; set; } = string.Empty; // Breakfast / Lunch / Dinner / Snack
     public int Servings { get; set; } = 1;
     public string? Notes { get; set; }
+    public bool IsCompleted { get; set; }
 
     public Guid RecipeId { get; set; }
     public Recipe? Recipe { get; set; }

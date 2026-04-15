@@ -7,6 +7,7 @@ public class MealPlanDto
     public string MealType { get; set; } = string.Empty;
     public int Servings { get; set; }
     public string? Notes { get; set; }
+    public bool IsCompleted { get; set; }
 
     public Guid RecipeId { get; set; }
     public string RecipeName { get; set; } = string.Empty;

@@ -14,6 +14,7 @@ type Recipe = {
   id: string
   name: string
   description?: string | null
+  baseServings: number
   ingredients: RecipeIngredient[]
 }
 
@@ -34,12 +35,14 @@ const success = ref('')
 const newRecipe = ref({
   name: '',
   description: '',
+  baseServings: 1,
 })
 
 const editRecipeId = ref<string | null>(null)
 const editRecipe = ref({
   name: '',
   description: '',
+  baseServings: 1,
 })
 
 const newIngredient = ref({
@@ -106,12 +109,16 @@ async function createRecipe() {
   try {
     const created = await apiFetch<Recipe>('/recipes', {
       method: 'POST',
-      body: JSON.stringify(newRecipe.value),
+      body: JSON.stringify({
+        ...newRecipe.value,
+        baseServings: Number(newRecipe.value.baseServings),
+      }),
     })
 
     newRecipe.value = {
       name: '',
       description: '',
+      baseServings: 1,
     }
 
     await loadData()
@@ -127,6 +134,7 @@ function startEditRecipe(recipe: Recipe) {
   editRecipe.value = {
     name: recipe.name,
     description: recipe.description ?? '',
+    baseServings: recipe.baseServings,
   }
 }
 
@@ -135,6 +143,7 @@ function cancelEditRecipe() {
   editRecipe.value = {
     name: '',
     description: '',
+    baseServings: 1,
   }
 }
 
@@ -145,7 +154,10 @@ async function updateRecipe(id: string) {
   try {
     await apiFetch<Recipe>(`/recipes/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(editRecipe.value),
+      body: JSON.stringify({
+        ...editRecipe.value,
+        baseServings: Number(editRecipe.value.baseServings),
+      }),
     })
 
     cancelEditRecipe()
@@ -324,6 +336,14 @@ onMounted(loadData)
 
         <form class="form" @submit.prevent="createRecipe">
           <input v-model="newRecipe.name" type="text" placeholder="Rezeptname" required />
+          <input
+            v-model="newRecipe.baseServings"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Basis-Portionen"
+            required
+          />
           <textarea v-model="newRecipe.description" placeholder="Beschreibung"></textarea>
           <button type="submit">Speichern</button>
         </form>
@@ -369,6 +389,7 @@ onMounted(loadData)
         <thead>
           <tr>
             <th>Name</th>
+            <th>Basis-Portionen</th>
             <th>Beschreibung</th>
             <th>Zutaten</th>
             <th>Aktionen</th>
@@ -385,6 +406,9 @@ onMounted(loadData)
                 <input v-model="editRecipe.name" type="text" />
               </td>
               <td>
+                <input v-model="editRecipe.baseServings" type="number" min="1" step="1" />
+              </td>
+              <td>
                 <textarea v-model="editRecipe.description"></textarea>
               </td>
               <td>{{ recipe.ingredients.length }}</td>
@@ -396,6 +420,7 @@ onMounted(loadData)
 
             <template v-else>
               <td @click="selectedRecipeId = recipe.id" class="clickable">{{ recipe.name }}</td>
+              <td>{{ recipe.baseServings }}</td>
               <td>{{ recipe.description || '—' }}</td>
               <td>{{ recipe.ingredients.length }}</td>
               <td class="actions">
@@ -413,6 +438,7 @@ onMounted(loadData)
 
     <div class="card" v-if="selectedRecipe">
       <h3>Zutaten für „{{ selectedRecipe.name }}“</h3>
+      <p><strong>Basis-Portionen:</strong> {{ selectedRecipe.baseServings }}</p>
 
       <table v-if="selectedRecipe.ingredients.length > 0">
         <thead>
