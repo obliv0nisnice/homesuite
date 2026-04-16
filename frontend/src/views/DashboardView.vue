@@ -371,8 +371,8 @@ function getMealsForDay(isoDate: string) {
 
 async function loadMonthData() {
   const [eventData, mealData] = await Promise.all([
-    apiFetch<CalendarEvent[]>(`/calendarevents?year=${currentYear.value}&month=${currentMonth.value}`),
-    apiFetch<MealPlan[]>(`/mealplan/month?year=${currentYear.value}&month=${currentMonth.value}`),
+    apiFetch<CalendarEvent[]>(`/calendarEvents?year=${currentYear.value}&month=${currentMonth.value}`),
+    apiFetch<MealPlan[]>(`/mealPlans/month?year=${currentYear.value}&month=${currentMonth.value}`),
   ])
 
   events.value = eventData ?? []
@@ -384,7 +384,7 @@ async function loadRecipes() {
 }
 
 async function createEvent() {
-  await apiFetch('/calendarevents', {
+  await apiFetch('/calendarEvents', {
     method: 'POST',
     body: JSON.stringify({
       date: selectedDate.value,
