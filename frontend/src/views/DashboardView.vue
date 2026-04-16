@@ -117,18 +117,18 @@
 
           <div class="day-section">
             <h3>Essensplanung</h3>
-            <div v-if="selectedDayMeals.length === 0" class="empty-state">Keine Meals geplant.</div>
+            <div v-if="selectedDayMeals.length === 0" class="empty-state">
+              Keine Meals geplant.
+            </div>
             <div v-else class="item-list">
-              <div v-else class="item-list">
-  <div v-for="meal in selectedDayMeals" :key="meal.id" class="item-card">
-    <div class="item-main">
-      <strong>{{ meal.mealType }} · {{ meal.recipeName || 'Rezept' }}</strong>
-      <span class="item-time">{{ meal.servings }} Portion(en)</span>
-    </div>
-    <div v-if="meal.notes" class="item-notes">{{ meal.notes }}</div>
-    <button class="btn-delete" @click="deleteMeal(meal.id)">Löschen</button>
-  </div>
-</div>
+              <div v-for="meal in selectedDayMeals" :key="meal.id" class="item-card">
+                <div class="item-main">
+                  <strong>{{ meal.mealType }} · {{ meal.recipeName || 'Rezept' }}</strong>
+                  <span class="item-time">{{ meal.servings }} Portion(en)</span>
+                </div>
+                <div v-if="meal.notes" class="item-notes">{{ meal.notes }}</div>
+                <button class="btn-delete" @click="deleteMeal(meal.id)">Löschen</button>
+              </div>
             </div>
           </div>
         </div>
