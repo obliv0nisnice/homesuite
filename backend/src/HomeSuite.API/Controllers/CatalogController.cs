@@ -15,6 +15,27 @@ public class CatalogController : ControllerBase
         _catalogService = catalogService;
     }
 
+
+[HttpPost("{id:guid}/refresh-prices")]
+public async Task<ActionResult> RefreshPrices(Guid id, CancellationToken cancellationToken)
+{
+    try
+    {
+        await _catalogService.RefreshPricesAsync(id, cancellationToken);
+        return NoContent();
+    }
+    catch (InvalidOperationException ex)
+    {
+        return NotFound(new { message = ex.Message });
+    }
+}
+
+[HttpPost("refresh-prices")]
+public async Task<ActionResult> RefreshAllPrices(CancellationToken cancellationToken)
+{
+    await _catalogService.RefreshAllPricesAsync(cancellationToken);
+    return NoContent();
+}
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CatalogItemDto>>> GetAll(CancellationToken cancellationToken)
     {

@@ -14,11 +14,81 @@ public class ShoppingListService : IShoppingListService
     {
         _dbContext = dbContext;
     }
+public async Task<List<ShoppingListStoreSummaryDto>> GetStoreSummariesAsync(Guid shoppingListId, CancellationToken cancellationToken = default)
+{
+    var shoppingList = await _dbContext.ShoppingLists
+        .Include(x => x.Items)
+        .ThenInclude(x => x.PriceOptions)
+        .FirstOrDefaultAsync(x => x.Id == shoppingListId, cancellationToken);
 
+    if (shoppingList is null)
+    {
+        throw new InvalidOperationException("Die Einkaufsliste existiert nicht.");
+    }
+
+    var relevantItems = shoppingList.Items
+        .Where(x => x.Quantity > 0)
+        .ToList();
+
+    if (relevantItems.Count == 0)
+    {
+        return [];
+    }
+
+    var storeMap = new Dictionary<string, ShoppingListStoreSummaryDto>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var item in relevantItems)
+    {
+        var availableOptions = item.PriceOptions
+            .Where(x => x.IsAvailable)
+            .ToList();
+
+        foreach (var option in availableOptions)
+        {
+            if (!storeMap.TryGetValue(option.StoreName, out var summary))
+            {
+                summary = new ShoppingListStoreSummaryDto
+                {
+                    StoreName = option.StoreName,
+                    TotalEstimatedPrice = 0,
+                    CoveredItemsCount = 0,
+                    TotalItemsCount = relevantItems.Count,
+                    IsComplete = false,
+                    IsBestOption = false
+                };
+
+                storeMap[option.StoreName] = summary;
+            }
+
+            summary.TotalEstimatedPrice += option.TotalPrice;
+            summary.CoveredItemsCount += 1;
+        }
+    }
+
+    var summaries = storeMap.Values
+        .Select(x =>
+        {
+            x.IsComplete = x.CoveredItemsCount == x.TotalItemsCount;
+            return x;
+        })
+        .OrderBy(x => x.TotalEstimatedPrice)
+        .ThenByDescending(x => x.CoveredItemsCount)
+        .ToList();
+
+    var bestComplete = summaries
+        .Where(x => x.IsComplete)
+        .OrderBy(x => x.TotalEstimatedPrice)
+        .FirstOrDefault();
+
+    if (bestComplete is not null)
+    {
+        bestComplete.IsBestOption = true;
+    }
+
+    return summaries;
+}
     public async Task<List<ShoppingListDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        await RefreshEstimatedPricesForAllAsync(cancellationToken);
-
         return await _dbContext.ShoppingLists
             .OrderByDescending(x => x.CreatedAt)
             .Select(x => new ShoppingListDto
@@ -68,8 +138,6 @@ public class ShoppingListService : IShoppingListService
 
     public async Task<ShoppingListDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await RefreshEstimatedPricesForShoppingListAsync(id, cancellationToken);
-
         return await _dbContext.ShoppingLists
             .Where(x => x.Id == id)
             .Select(x => new ShoppingListDto
@@ -158,16 +226,7 @@ public class ShoppingListService : IShoppingListService
         shoppingList.Name = request.Name.Trim();
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        await RefreshEstimatedPricesForShoppingListAsync(id, cancellationToken);
-
-        var refreshedShoppingList = await _dbContext.ShoppingLists
-            .Include(x => x.Items)
-            .ThenInclude(x => x.CatalogItem)
-            .Include(x => x.Items)
-            .ThenInclude(x => x.PriceOptions)
-            .FirstAsync(x => x.Id == id, cancellationToken);
-
-        return MapShoppingList(refreshedShoppingList);
+        return MapShoppingList(shoppingList);
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
@@ -222,8 +281,8 @@ public class ShoppingListService : IShoppingListService
             PurchasedQuantity = purchasedQuantity,
             Unit = request.Unit.Trim(),
             IsChecked = false,
-            EstimatedUnitPrice = null,
-            EstimatedTotalPrice = null,
+            EstimatedUnitPrice = request.EstimatedUnitPrice,
+            EstimatedTotalPrice = request.EstimatedTotalPrice,
             ActualTotalPrice = request.ActualTotalPrice,
             SourceType = string.IsNullOrWhiteSpace(request.SourceType) ? "Manual" : request.SourceType.Trim(),
             CatalogItemId = request.CatalogItemId,
@@ -288,36 +347,31 @@ public class ShoppingListService : IShoppingListService
         item.PurchasedQuantity = request.PurchasedQuantity < 0 ? 0 : request.PurchasedQuantity;
         item.Unit = request.Unit.Trim();
         item.IsChecked = request.IsChecked;
+        item.EstimatedUnitPrice = request.EstimatedUnitPrice;
+        item.EstimatedTotalPrice = request.EstimatedTotalPrice;
         item.ActualTotalPrice = request.ActualTotalPrice;
         item.SourceType = string.IsNullOrWhiteSpace(request.SourceType) ? "Manual" : request.SourceType.Trim();
         item.CatalogItemId = request.CatalogItemId;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        await RefreshEstimatedPriceForItemAsync(item.Id, cancellationToken);
-
-        var refreshedItem = await _dbContext.ShoppingItems
-            .Include(x => x.CatalogItem)
-            .Include(x => x.PriceOptions)
-            .FirstAsync(x => x.Id == item.Id, cancellationToken);
-
         return new ShoppingItemDto
         {
-            Id = refreshedItem.Id,
-            Name = refreshedItem.Name,
-            RequiredQuantity = refreshedItem.RequiredQuantity,
-            InventoryQuantityUsed = refreshedItem.InventoryQuantityUsed,
-            Quantity = refreshedItem.Quantity,
-            PurchasedQuantity = refreshedItem.PurchasedQuantity,
-            Unit = refreshedItem.Unit,
-            IsChecked = refreshedItem.IsChecked,
-            EstimatedUnitPrice = refreshedItem.EstimatedUnitPrice,
-            EstimatedTotalPrice = refreshedItem.EstimatedTotalPrice,
-            ActualTotalPrice = refreshedItem.ActualTotalPrice,
-            SourceType = refreshedItem.SourceType,
-            CatalogItemId = refreshedItem.CatalogItemId,
-            CatalogItemName = catalogItem?.Name ?? refreshedItem.CatalogItem?.Name,
-            PriceOptions = refreshedItem.PriceOptions
+            Id = item.Id,
+            Name = item.Name,
+            RequiredQuantity = item.RequiredQuantity,
+            InventoryQuantityUsed = item.InventoryQuantityUsed,
+            Quantity = item.Quantity,
+            PurchasedQuantity = item.PurchasedQuantity,
+            Unit = item.Unit,
+            IsChecked = item.IsChecked,
+            EstimatedUnitPrice = item.EstimatedUnitPrice,
+            EstimatedTotalPrice = item.EstimatedTotalPrice,
+            ActualTotalPrice = item.ActualTotalPrice,
+            SourceType = item.SourceType,
+            CatalogItemId = item.CatalogItemId,
+            CatalogItemName = catalogItem?.Name,
+            PriceOptions = item.PriceOptions
                 .OrderBy(p => p.StoreName)
                 .Select(p => new ShoppingItemPriceOptionDto
                 {
@@ -332,7 +386,7 @@ public class ShoppingListService : IShoppingListService
                     CheckedAt = p.CheckedAt
                 })
                 .ToList(),
-            ShoppingListId = refreshedItem.ShoppingListId
+            ShoppingListId = item.ShoppingListId
         };
     }
 
@@ -378,16 +432,8 @@ public class ShoppingListService : IShoppingListService
         MergeRecipeIngredientsIntoShoppingList(shoppingList, recipe.Ingredients, 1m);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
-        await RefreshEstimatedPricesForShoppingListAsync(shoppingListId, cancellationToken);
 
-        var refreshedShoppingList = await _dbContext.ShoppingLists
-            .Include(x => x.Items)
-            .ThenInclude(x => x.CatalogItem)
-            .Include(x => x.Items)
-            .ThenInclude(x => x.PriceOptions)
-            .FirstAsync(x => x.Id == shoppingListId, cancellationToken);
-
-        return MapShoppingList(refreshedShoppingList);
+        return MapShoppingList(shoppingList);
     }
 
     public async Task<ShoppingListDto> AddMealPlanWeekToShoppingListAsync(Guid shoppingListId, DateOnly weekStartDate, CancellationToken cancellationToken = default)
@@ -523,16 +569,8 @@ public class ShoppingListService : IShoppingListService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
-        await RefreshEstimatedPricesForShoppingListAsync(shoppingListId, cancellationToken);
 
-        var refreshedShoppingList = await _dbContext.ShoppingLists
-            .Include(x => x.Items)
-            .ThenInclude(x => x.CatalogItem)
-            .Include(x => x.Items)
-            .ThenInclude(x => x.PriceOptions)
-            .FirstAsync(x => x.Id == shoppingListId, cancellationToken);
-
-        return MapShoppingList(refreshedShoppingList);
+        return MapShoppingList(shoppingList);
     }
 
     public async Task CompleteShoppingListAsync(Guid shoppingListId, CancellationToken cancellationToken = default)
@@ -638,8 +676,6 @@ public class ShoppingListService : IShoppingListService
         _dbContext.ShoppingItemPriceOptions.Add(option);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        await RefreshEstimatedPriceForItemAsync(shoppingItemId, cancellationToken);
-
         return new ShoppingItemPriceOptionDto
         {
             Id = option.Id,
@@ -681,7 +717,6 @@ public class ShoppingListService : IShoppingListService
         option.CheckedAt = request.CheckedAt ?? DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
-        await RefreshEstimatedPriceForItemAsync(shoppingItemId, cancellationToken);
 
         return new ShoppingItemPriceOptionDto
         {
@@ -715,139 +750,8 @@ public class ShoppingListService : IShoppingListService
 
         _dbContext.ShoppingItemPriceOptions.Remove(option);
         await _dbContext.SaveChangesAsync(cancellationToken);
-        await RefreshEstimatedPriceForItemAsync(shoppingItemId, cancellationToken);
 
         return true;
-    }
-
-    public async Task<List<ShoppingListStoreSummaryDto>> GetStoreSummariesAsync(Guid shoppingListId, CancellationToken cancellationToken = default)
-    {
-        var shoppingList = await _dbContext.ShoppingLists
-            .Include(x => x.Items)
-            .ThenInclude(x => x.PriceOptions)
-            .FirstOrDefaultAsync(x => x.Id == shoppingListId, cancellationToken);
-
-        if (shoppingList is null)
-        {
-            throw new InvalidOperationException("Die Einkaufsliste existiert nicht.");
-        }
-
-        var relevantItems = shoppingList.Items
-            .Where(x => x.Quantity > 0)
-            .ToList();
-
-        if (relevantItems.Count == 0)
-        {
-            return [];
-        }
-
-        var storeMap = new Dictionary<string, ShoppingListStoreSummaryDto>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var item in relevantItems)
-        {
-            var availableOptions = item.PriceOptions
-                .Where(x => x.IsAvailable)
-                .ToList();
-
-            foreach (var option in availableOptions)
-            {
-                if (!storeMap.TryGetValue(option.StoreName, out var summary))
-                {
-                    summary = new ShoppingListStoreSummaryDto
-                    {
-                        StoreName = option.StoreName,
-                        TotalEstimatedPrice = 0,
-                        CoveredItemsCount = 0,
-                        TotalItemsCount = relevantItems.Count,
-                        IsComplete = false,
-                        IsBestOption = false
-                    };
-
-                    storeMap[option.StoreName] = summary;
-                }
-
-                summary.TotalEstimatedPrice += option.TotalPrice;
-                summary.CoveredItemsCount += 1;
-            }
-        }
-
-        var summaries = storeMap.Values
-            .Select(x =>
-            {
-                x.IsComplete = x.CoveredItemsCount == x.TotalItemsCount;
-                return x;
-            })
-            .OrderBy(x => x.TotalEstimatedPrice)
-            .ThenByDescending(x => x.CoveredItemsCount)
-            .ToList();
-
-        var bestComplete = summaries
-            .Where(x => x.IsComplete)
-            .OrderBy(x => x.TotalEstimatedPrice)
-            .FirstOrDefault();
-
-        if (bestComplete is not null)
-        {
-            bestComplete.IsBestOption = true;
-        }
-
-        return summaries;
-    }
-
-    private async Task RefreshEstimatedPricesForAllAsync(CancellationToken cancellationToken)
-    {
-        var itemIds = await _dbContext.ShoppingItems
-            .Select(x => x.Id)
-            .ToListAsync(cancellationToken);
-
-        foreach (var itemId in itemIds)
-        {
-            await RefreshEstimatedPriceForItemAsync(itemId, cancellationToken);
-        }
-    }
-
-    private async Task RefreshEstimatedPricesForShoppingListAsync(Guid shoppingListId, CancellationToken cancellationToken)
-    {
-        var itemIds = await _dbContext.ShoppingItems
-            .Where(x => x.ShoppingListId == shoppingListId)
-            .Select(x => x.Id)
-            .ToListAsync(cancellationToken);
-
-        foreach (var itemId in itemIds)
-        {
-            await RefreshEstimatedPriceForItemAsync(itemId, cancellationToken);
-        }
-    }
-
-    private async Task RefreshEstimatedPriceForItemAsync(Guid shoppingItemId, CancellationToken cancellationToken)
-    {
-        var item = await _dbContext.ShoppingItems
-            .Include(x => x.PriceOptions)
-            .FirstOrDefaultAsync(x => x.Id == shoppingItemId, cancellationToken);
-
-        if (item is null)
-        {
-            return;
-        }
-
-        var bestOption = item.PriceOptions
-            .Where(x => x.IsAvailable)
-            .OrderBy(x => x.TotalPrice)
-            .ThenBy(x => x.UnitPrice)
-            .FirstOrDefault();
-
-        if (bestOption is null)
-        {
-            item.EstimatedUnitPrice = null;
-            item.EstimatedTotalPrice = null;
-        }
-        else
-        {
-            item.EstimatedUnitPrice = bestOption.UnitPrice;
-            item.EstimatedTotalPrice = bestOption.TotalPrice;
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<CatalogItem?> FindCatalogItemAsync(string name, string unit, CancellationToken cancellationToken)

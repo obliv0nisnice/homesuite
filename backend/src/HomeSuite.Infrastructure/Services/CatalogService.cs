@@ -9,43 +9,31 @@ namespace HomeSuite.Infrastructure.Services;
 public class CatalogService : ICatalogService
 {
     private readonly HomeSuiteDbContext _dbContext;
+    private readonly ICatalogPriceCrawlerService _catalogPriceCrawlerService;
 
-    public CatalogService(HomeSuiteDbContext dbContext)
+    public CatalogService(
+        HomeSuiteDbContext dbContext,
+        ICatalogPriceCrawlerService catalogPriceCrawlerService)
     {
         _dbContext = dbContext;
+        _catalogPriceCrawlerService = catalogPriceCrawlerService;
     }
 
     public async Task<List<CatalogItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _dbContext.CatalogItems
+            .Include(x => x.Prices)
             .OrderBy(x => x.Name)
-            .Select(x => new CatalogItemDto
-            {
-                Id = x.Id,
-                Name = x.Name,
-                DefaultUnit = x.DefaultUnit,
-                Category = x.Category,
-                SearchTerm = x.SearchTerm,
-                BrandHint = x.BrandHint,
-                IsStaple = x.IsStaple
-            })
+            .Select(MapCatalogItemDto())
             .ToListAsync(cancellationToken);
     }
 
     public async Task<CatalogItemDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _dbContext.CatalogItems
+            .Include(x => x.Prices)
             .Where(x => x.Id == id)
-            .Select(x => new CatalogItemDto
-            {
-                Id = x.Id,
-                Name = x.Name,
-                DefaultUnit = x.DefaultUnit,
-                Category = x.Category,
-                SearchTerm = x.SearchTerm,
-                BrandHint = x.BrandHint,
-                IsStaple = x.IsStaple
-            })
+            .Select(MapCatalogItemDto())
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -74,7 +62,8 @@ public class CatalogService : ICatalogService
             Category = item.Category,
             SearchTerm = item.SearchTerm,
             BrandHint = item.BrandHint,
-            IsStaple = item.IsStaple
+            IsStaple = item.IsStaple,
+            Prices = []
         };
     }
 
@@ -83,6 +72,7 @@ public class CatalogService : ICatalogService
         ValidateRequest(request.Name, request.DefaultUnit);
 
         var item = await _dbContext.CatalogItems
+            .Include(x => x.Prices)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 
         if (item is null)
@@ -99,16 +89,7 @@ public class CatalogService : ICatalogService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new CatalogItemDto
-        {
-            Id = item.Id,
-            Name = item.Name,
-            DefaultUnit = item.DefaultUnit,
-            Category = item.Category,
-            SearchTerm = item.SearchTerm,
-            BrandHint = item.BrandHint,
-            IsStaple = item.IsStaple
-        };
+        return Map(item);
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
@@ -127,6 +108,16 @@ public class CatalogService : ICatalogService
         return true;
     }
 
+    public async Task RefreshPricesAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await _catalogPriceCrawlerService.RefreshCatalogItemPricesAsync(id, cancellationToken);
+    }
+
+    public async Task RefreshAllPricesAsync(CancellationToken cancellationToken = default)
+    {
+        await _catalogPriceCrawlerService.RefreshAllCatalogPricesAsync(cancellationToken);
+    }
+
     private static void ValidateRequest(string name, string defaultUnit)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -138,5 +129,85 @@ public class CatalogService : ICatalogService
         {
             throw new ArgumentException("Die Standard-Einheit ist erforderlich.");
         }
+    }
+
+    private static CatalogItemDto Map(CatalogItem item)
+    {
+        return new CatalogItemDto
+        {
+            Id = item.Id,
+            Name = item.Name,
+            DefaultUnit = item.DefaultUnit,
+            Category = item.Category,
+            SearchTerm = item.SearchTerm,
+            BrandHint = item.BrandHint,
+            IsStaple = item.IsStaple,
+            Prices = item.Prices
+                .OrderBy(x => x.TotalPrice ?? decimal.MaxValue)
+                .ThenBy(x => x.UnitPrice ?? decimal.MaxValue)
+                .Select(x => new CatalogItemPriceDto
+                {
+                    Id = x.Id,
+                    StoreName = x.StoreName,
+                    ProductName = x.ProductName,
+                    UnitPrice = x.UnitPrice,
+                    TotalPrice = x.TotalPrice,
+                    ProductUrl = x.ProductUrl,
+                    IsAvailable = x.IsAvailable,
+                    CheckedAt = x.CheckedAt,
+                    SourceType = x.SourceType
+                })
+                .ToList(),
+            BestUnitPrice = item.Prices
+                .Where(x => x.UnitPrice.HasValue)
+                .OrderBy(x => x.UnitPrice)
+                .Select(x => x.UnitPrice)
+                .FirstOrDefault(),
+            BestTotalPrice = item.Prices
+                .Where(x => x.TotalPrice.HasValue)
+                .OrderBy(x => x.TotalPrice)
+                .Select(x => x.TotalPrice)
+                .FirstOrDefault()
+        };
+    }
+
+    private static System.Linq.Expressions.Expression<Func<CatalogItem, CatalogItemDto>> MapCatalogItemDto()
+    {
+        return item => new CatalogItemDto
+        {
+            Id = item.Id,
+            Name = item.Name,
+            DefaultUnit = item.DefaultUnit,
+            Category = item.Category,
+            SearchTerm = item.SearchTerm,
+            BrandHint = item.BrandHint,
+            IsStaple = item.IsStaple,
+            Prices = item.Prices
+                .OrderBy(x => x.TotalPrice ?? decimal.MaxValue)
+                .ThenBy(x => x.UnitPrice ?? decimal.MaxValue)
+                .Select(x => new CatalogItemPriceDto
+                {
+                    Id = x.Id,
+                    StoreName = x.StoreName,
+                    ProductName = x.ProductName,
+                    UnitPrice = x.UnitPrice,
+                    TotalPrice = x.TotalPrice,
+                    ProductUrl = x.ProductUrl,
+                    IsAvailable = x.IsAvailable,
+                    CheckedAt = x.CheckedAt,
+                    SourceType = x.SourceType
+                })
+                .ToList(),
+            BestUnitPrice = item.Prices
+                .Where(x => x.UnitPrice.HasValue)
+                .OrderBy(x => x.UnitPrice)
+                .Select(x => x.UnitPrice)
+                .FirstOrDefault(),
+            BestTotalPrice = item.Prices
+                .Where(x => x.TotalPrice.HasValue)
+                .OrderBy(x => x.TotalPrice)
+                .Select(x => x.TotalPrice)
+                .FirstOrDefault()
+        };
     }
 }

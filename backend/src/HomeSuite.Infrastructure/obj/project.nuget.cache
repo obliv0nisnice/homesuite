@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "4tVcJTcoPFU=",
+  "dgSpecHash": "eghV4ySs6WE=",
   "success": true,
   "projectFilePath": "/home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/HomeSuite.Infrastructure.csproj",
   "expectedPackageFiles": [
@@ -22,6 +22,9 @@
     "/home/jakob/.nuget/packages/microsoft.extensions.dependencyinjection/8.0.1/microsoft.extensions.dependencyinjection.8.0.1.nupkg.sha512",
     "/home/jakob/.nuget/packages/microsoft.extensions.dependencyinjection.abstractions/8.0.2/microsoft.extensions.dependencyinjection.abstractions.8.0.2.nupkg.sha512",
     "/home/jakob/.nuget/packages/microsoft.extensions.dependencymodel/8.0.2/microsoft.extensions.dependencymodel.8.0.2.nupkg.sha512",
+    "/home/jakob/.nuget/packages/microsoft.extensions.diagnostics.abstractions/8.0.0/microsoft.extensions.diagnostics.abstractions.8.0.0.nupkg.sha512",
+    "/home/jakob/.nuget/packages/microsoft.extensions.fileproviders.abstractions/8.0.0/microsoft.extensions.fileproviders.abstractions.8.0.0.nupkg.sha512",
+    "/home/jakob/.nuget/packages/microsoft.extensions.hosting.abstractions/8.0.0/microsoft.extensions.hosting.abstractions.8.0.0.nupkg.sha512",
     "/home/jakob/.nuget/packages/microsoft.extensions.logging/8.0.1/microsoft.extensions.logging.8.0.1.nupkg.sha512",
     "/home/jakob/.nuget/packages/microsoft.extensions.logging.abstractions/8.0.2/microsoft.extensions.logging.abstractions.8.0.2.nupkg.sha512",
     "/home/jakob/.nuget/packages/microsoft.extensions.options/8.0.2/microsoft.extensions.options.8.0.2.nupkg.sha512",
@@ -37,6 +40,7 @@
     "/home/jakob/.nuget/packages/system.composition.hosting/6.0.0/system.composition.hosting.6.0.0.nupkg.sha512",
     "/home/jakob/.nuget/packages/system.composition.runtime/6.0.0/system.composition.runtime.6.0.0.nupkg.sha512",
     "/home/jakob/.nuget/packages/system.composition.typedparts/6.0.0/system.composition.typedparts.6.0.0.nupkg.sha512",
+    "/home/jakob/.nuget/packages/system.diagnostics.diagnosticsource/8.0.0/system.diagnostics.diagnosticsource.8.0.0.nupkg.sha512",
     "/home/jakob/.nuget/packages/system.io.pipelines/6.0.3/system.io.pipelines.6.0.3.nupkg.sha512",
     "/home/jakob/.nuget/packages/system.reflection.metadata/6.0.1/system.reflection.metadata.6.0.1.nupkg.sha512",
     "/home/jakob/.nuget/packages/system.runtime.compilerservices.unsafe/6.0.0/system.runtime.compilerservices.unsafe.6.0.0.nupkg.sha512",

@@ -20,6 +20,7 @@ public class HomeSuiteDbContext : DbContext
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<CatalogItem> CatalogItems => Set<CatalogItem>();
     public DbSet<ShoppingItemPriceOption> ShoppingItemPriceOptions => Set<ShoppingItemPriceOption>();
+    public DbSet<CatalogItemPrice> CatalogItemPrices => Set<CatalogItemPrice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,17 +34,17 @@ public class HomeSuiteDbContext : DbContext
         });
 
         modelBuilder.Entity<Transaction>(entity =>
-        {
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.Title).HasMaxLength(200).IsRequired();
-            entity.Property(x => x.Amount).HasColumnType("numeric(12,2)");
-            entity.Property(x => x.Date).IsRequired();
+{
+    entity.HasKey(x => x.Id);
+    entity.Property(x => x.Title).HasMaxLength(200).IsRequired();
+    entity.Property(x => x.Amount).HasColumnType("numeric(12,2)");
+    entity.Property(x => x.Date).IsRequired();
 
-            entity.HasOne(x => x.Category)
-                .WithMany()
-                .HasForeignKey(x => x.CategoryId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
+    entity.HasOne(x => x.Category)
+        .WithMany()
+        .HasForeignKey(x => x.CategoryId)
+        .OnDelete(DeleteBehavior.Restrict);
+});
 
         modelBuilder.Entity<ShoppingList>(entity =>
         {
@@ -60,6 +61,7 @@ public class HomeSuiteDbContext : DbContext
         modelBuilder.Entity<ShoppingItem>(entity =>
 {
     entity.HasKey(x => x.Id);
+
     entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
     entity.Property(x => x.RequiredQuantity).HasColumnType("numeric(12,2)");
     entity.Property(x => x.InventoryQuantityUsed).HasColumnType("numeric(12,2)");
@@ -76,8 +78,12 @@ public class HomeSuiteDbContext : DbContext
         .WithMany()
         .HasForeignKey(x => x.CatalogItemId)
         .OnDelete(DeleteBehavior.SetNull);
-});
 
+    entity.HasOne(x => x.ShoppingList)
+        .WithMany(x => x.Items)
+        .HasForeignKey(x => x.ShoppingListId)
+        .OnDelete(DeleteBehavior.Cascade);
+});
 
 modelBuilder.Entity<Recipe>(entity =>
         {
@@ -131,6 +137,11 @@ modelBuilder.Entity<Recipe>(entity =>
     entity.Property(x => x.SearchTerm).HasMaxLength(300);
     entity.Property(x => x.BrandHint).HasMaxLength(200);
     entity.Property(x => x.IsStaple).IsRequired();
+
+    entity.HasMany(x => x.Prices)
+        .WithOne(x => x.CatalogItem)
+        .HasForeignKey(x => x.CatalogItemId)
+        .OnDelete(DeleteBehavior.Cascade);
 });
 
 modelBuilder.Entity<ShoppingItemPriceOption>(entity =>
@@ -149,5 +160,19 @@ modelBuilder.Entity<ShoppingItemPriceOption>(entity =>
         .HasForeignKey(x => x.ShoppingItemId)
         .OnDelete(DeleteBehavior.Cascade);
 });
+
+modelBuilder.Entity<CatalogItemPrice>(entity =>
+{
+    entity.HasKey(x => x.Id);
+    entity.Property(x => x.StoreName).HasMaxLength(100).IsRequired();
+    entity.Property(x => x.ProductName).HasMaxLength(300).IsRequired();
+    entity.Property(x => x.UnitPrice).HasColumnType("numeric(12,2)");
+    entity.Property(x => x.TotalPrice).HasColumnType("numeric(12,2)");
+    entity.Property(x => x.ProductUrl).HasMaxLength(1000);
+    entity.Property(x => x.IsAvailable).IsRequired();
+    entity.Property(x => x.CheckedAt).IsRequired();
+    entity.Property(x => x.SourceType).HasMaxLength(50).IsRequired();
+});
+
     }
 }

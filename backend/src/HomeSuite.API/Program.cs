@@ -20,6 +20,11 @@ builder.Services.AddScoped<IMealPlanService, MealPlanService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 
+builder.Services.AddScoped<ICatalogPriceCrawlerService, CatalogPriceCrawlerService>();
+builder.Services.AddScoped<IPriceCrawlerSource, DummyPriceCrawlerSource>();
+
+builder.Services.AddHostedService<CatalogPriceRefreshWorker>();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
@@ -40,9 +45,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("Frontend");
-
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
