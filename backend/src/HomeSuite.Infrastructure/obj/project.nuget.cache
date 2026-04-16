@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "eghV4ySs6WE=",
+  "dgSpecHash": "CKfq7HwImuU=",
   "success": true,
   "projectFilePath": "/home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/HomeSuite.Infrastructure.csproj",
   "expectedPackageFiles": [
+    "/home/jakob/.nuget/packages/htmlagilitypack/1.12.4/htmlagilitypack.1.12.4.nupkg.sha512",
     "/home/jakob/.nuget/packages/humanizer.core/2.14.1/humanizer.core.2.14.1.nupkg.sha512",
     "/home/jakob/.nuget/packages/microsoft.bcl.asyncinterfaces/6.0.0/microsoft.bcl.asyncinterfaces.6.0.0.nupkg.sha512",
     "/home/jakob/.nuget/packages/microsoft.codeanalysis.analyzers/3.3.3/microsoft.codeanalysis.analyzers.3.3.3.nupkg.sha512",

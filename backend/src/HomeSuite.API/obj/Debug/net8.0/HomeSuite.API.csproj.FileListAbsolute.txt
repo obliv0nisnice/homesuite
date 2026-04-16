@@ -116,3 +116,4 @@
 /home/jakob/homesuite/backend/src/HomeSuite.API/bin/Debug/net8.0/zh-Hans/Microsoft.CodeAnalysis.Workspaces.resources.dll
 /home/jakob/homesuite/backend/src/HomeSuite.API/bin/Debug/net8.0/zh-Hant/Microsoft.CodeAnalysis.Workspaces.resources.dll
 /home/jakob/homesuite/backend/src/HomeSuite.API/obj/Debug/net8.0/HomeSuite.API.sourcelink.json
+/home/jakob/homesuite/backend/src/HomeSuite.API/bin/Debug/net8.0/HtmlAgilityPack.dll
