@@ -8,6 +8,30 @@ namespace HomeSuite.API.Controllers;
 [Route("api/[controller]")]
 public class MealPlansController : ControllerBase
 {
+
+    [HttpGet("month")]
+public async Task<ActionResult<List<MealPlanDto>>> GetByMonth(
+    [FromQuery] int year,
+    [FromQuery] int month,
+    CancellationToken cancellationToken)
+{
+    var result = await _mealPlanService.GetByMonthAsync(year, month, cancellationToken);
+    return Ok(result);
+}
+
+[HttpGet("day/{date}")]
+public async Task<ActionResult<List<MealPlanDto>>> GetByDate(
+    string date,
+    CancellationToken cancellationToken)
+{
+    if (!DateOnly.TryParse(date, out var parsedDate))
+    {
+        return BadRequest(new { message = "Ungültiges Datum." });
+    }
+
+    var result = await _mealPlanService.GetByDateAsync(parsedDate, cancellationToken);
+    return Ok(result);
+}
     [HttpGet("week-summary")]
     public async Task<ActionResult<MealPlanWeekSummaryDto>> GetWeekSummary(
         [FromQuery] DateOnly weekStartDate,

@@ -22,7 +22,49 @@ private sealed class AggregatedRequirement
     public string Unit { get; set; } = string.Empty;
 }
 
-  
+  public async Task<List<MealPlanDto>> GetByMonthAsync(int year, int month, CancellationToken cancellationToken = default)
+{
+    var start = new DateOnly(year, month, 1);
+    var end = start.AddMonths(1);
+
+    return await _dbContext.MealPlans
+        .Include(x => x.Recipe)
+        .Where(x => x.Date >= start && x.Date < end)
+        .OrderBy(x => x.Date)
+        .ThenBy(x => x.MealType)
+        .Select(x => new MealPlanDto
+        {
+            Id = x.Id,
+            Date = x.Date,
+            MealType = x.MealType,
+            Servings = x.Servings,
+            Notes = x.Notes,
+            IsCompleted = x.IsCompleted,
+            RecipeId = x.RecipeId,
+            RecipeName = x.Recipe != null ? x.Recipe.Name : string.Empty
+        })
+        .ToListAsync(cancellationToken);
+}
+
+public async Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationToken cancellationToken = default)
+{
+    return await _dbContext.MealPlans
+        .Include(x => x.Recipe)
+        .Where(x => x.Date == date)
+        .OrderBy(x => x.MealType)
+        .Select(x => new MealPlanDto
+        {
+            Id = x.Id,
+            Date = x.Date,
+            MealType = x.MealType,
+            Servings = x.Servings,
+            Notes = x.Notes,
+            IsCompleted = x.IsCompleted,
+            RecipeId = x.RecipeId,
+            RecipeName = x.Recipe != null ? x.Recipe.Name : string.Empty
+        })
+        .ToListAsync(cancellationToken);
+}
     public async Task<MealPlanWeekSummaryDto> GetWeekSummaryAsync(DateOnly weekStartDate, CancellationToken cancellationToken = default)
 {
     var weekEndDate = weekStartDate.AddDays(6);

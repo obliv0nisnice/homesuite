@@ -11,4 +11,6 @@ public interface IMealPlanService
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task CompleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<MealPlanWeekSummaryDto> GetWeekSummaryAsync(DateOnly weekStartDate, CancellationToken cancellationToken = default);
+    Task<List<MealPlanDto>> GetByMonthAsync(int year, int month, CancellationToken cancellationToken = default);
+Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationToken cancellationToken = default);
 }
