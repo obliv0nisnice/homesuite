@@ -15,29 +15,8 @@ public class CatalogController : ControllerBase
         _catalogService = catalogService;
     }
 
-
-[HttpPost("{id:guid}/refresh-prices")]
-public async Task<ActionResult> RefreshPrices(Guid id, CancellationToken cancellationToken)
-{
-    try
-    {
-        await _catalogService.RefreshPricesAsync(id, cancellationToken);
-        return NoContent();
-    }
-    catch (InvalidOperationException ex)
-    {
-        return NotFound(new { message = ex.Message });
-    }
-}
-
-[HttpPost("refresh-prices")]
-public async Task<ActionResult> RefreshAllPrices(CancellationToken cancellationToken)
-{
-    await _catalogService.RefreshAllPricesAsync(cancellationToken);
-    return NoContent();
-}
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<CatalogItemDto>>> GetAll(CancellationToken cancellationToken)
+    public async Task<ActionResult<List<CatalogItemDto>>> GetAll(CancellationToken cancellationToken)
     {
         var items = await _catalogService.GetAllAsync(cancellationToken);
         return Ok(items);
@@ -96,7 +75,7 @@ public async Task<ActionResult> RefreshAllPrices(CancellationToken cancellationT
     }
 
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         var deleted = await _catalogService.DeleteAsync(id, cancellationToken);
 
@@ -105,6 +84,27 @@ public async Task<ActionResult> RefreshAllPrices(CancellationToken cancellationT
             return NotFound(new { message = "CatalogItem nicht gefunden." });
         }
 
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/refresh-prices")]
+    public async Task<ActionResult> RefreshPrices(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _catalogService.RefreshPricesAsync(id, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("refresh-prices")]
+    public async Task<ActionResult> RefreshAllPrices(CancellationToken cancellationToken)
+    {
+        await _catalogService.RefreshAllPricesAsync(cancellationToken);
         return NoContent();
     }
 }

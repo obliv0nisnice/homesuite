@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace HomeSuite.Infrastructure.Services;
+namespace HomeSuite.API.BackgroundServices;
 
 public class CatalogPriceRefreshWorker : BackgroundService
 {

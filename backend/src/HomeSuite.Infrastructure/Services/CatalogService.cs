@@ -24,7 +24,7 @@ public class CatalogService : ICatalogService
         return await _dbContext.CatalogItems
             .Include(x => x.Prices)
             .OrderBy(x => x.Name)
-            .Select(MapCatalogItemDto())
+            .Select(MapExpression())
             .ToListAsync(cancellationToken);
     }
 
@@ -33,7 +33,7 @@ public class CatalogService : ICatalogService
         return await _dbContext.CatalogItems
             .Include(x => x.Prices)
             .Where(x => x.Id == id)
-            .Select(MapCatalogItemDto())
+            .Select(MapExpression())
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -54,17 +54,7 @@ public class CatalogService : ICatalogService
         _dbContext.CatalogItems.Add(item);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return new CatalogItemDto
-        {
-            Id = item.Id,
-            Name = item.Name,
-            DefaultUnit = item.DefaultUnit,
-            Category = item.Category,
-            SearchTerm = item.SearchTerm,
-            BrandHint = item.BrandHint,
-            IsStaple = item.IsStaple,
-            Prices = []
-        };
+        return Map(item);
     }
 
     public async Task<CatalogItemDto?> UpdateAsync(Guid id, UpdateCatalogItemRequest request, CancellationToken cancellationToken = default)
@@ -171,7 +161,7 @@ public class CatalogService : ICatalogService
         };
     }
 
-    private static System.Linq.Expressions.Expression<Func<CatalogItem, CatalogItemDto>> MapCatalogItemDto()
+    private static System.Linq.Expressions.Expression<Func<CatalogItem, CatalogItemDto>> MapExpression()
     {
         return item => new CatalogItemDto
         {

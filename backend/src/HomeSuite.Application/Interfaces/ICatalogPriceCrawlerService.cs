@@ -1,5 +1,3 @@
-using HomeSuite.Application.DTOs.Catalog;
-
 namespace HomeSuite.Application.Interfaces;
 
 public interface ICatalogPriceCrawlerService

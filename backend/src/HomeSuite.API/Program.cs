@@ -1,3 +1,4 @@
+using HomeSuite.API.BackgroundServices;
 using HomeSuite.Application.Interfaces;
 using HomeSuite.Infrastructure.Persistence;
 using HomeSuite.Infrastructure.Services;
