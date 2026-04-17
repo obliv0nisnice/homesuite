@@ -527,23 +527,126 @@ onMounted(() => {
 </template>
 
 <style scoped>
-
-.missing {
-  color: #b00020;
-  font-weight: 600;
+/* ── PAGE WRAPPER ─────────────────────────────────────── */
+section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
 }
 
-.covered {
-  color: #0a7a2f;
-  font-weight: 600;
+/* ── PAGE HEADING ─────────────────────────────────────── */
+h2 {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.8px;
+  margin-bottom: 4px;
 }
-.card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 16px;
+
+h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
   margin-bottom: 16px;
 }
 
+h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+h5 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── HEADLINE ROW ─────────────────────────────────────── */
+.headline-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.muted {
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+/* ── ALERTS ───────────────────────────────────────────── */
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #ef4444;
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #10b981;
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+/* ── SUMMARY / STAT GRID ──────────────────────────────── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.big {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: -1px;
+  margin-top: 4px;
+}
+
+/* ── CARD ─────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--card-shadow);
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+/* ── TABLE HEADER ─────────────────────────────────────── */
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* ── FORM ─────────────────────────────────────────────── */
 .form {
   display: flex;
   flex-direction: column;
@@ -554,12 +657,27 @@ onMounted(() => {
   gap: 8px;
 }
 
-input,
+/* ── INPUTS ───────────────────────────────────────────── */
+input:not([type="checkbox"]),
 select,
-textarea,
-button {
-  padding: 10px;
+textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
   font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+input:not([type="checkbox"]):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary);
+  background: var(--surface);
 }
 
 textarea {
@@ -567,13 +685,207 @@ textarea {
   resize: vertical;
 }
 
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.checkbox-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* ── BUTTONS ──────────────────────────────────────────── */
+button {
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s, background 0.2s;
+  background: var(--primary);
+  color: white;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Secondary / cancel variant — applied by class */
+button.btn-secondary,
+button[data-variant="secondary"] {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+/* ── TABLE ────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+th {
+  padding: 10px 12px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+}
+
+td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+  color: var(--text);
+}
+
+tbody tr:hover {
+  background: var(--surface2);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── GRID LAYOUT ──────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+/* ── ACTIONS CELL ─────────────────────────────────────── */
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* "Abbrechen" style for inline cancel buttons */
+.actions button:last-child:not(:first-child) {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+/* ── DETAILS / NESTED ROWS ────────────────────────────── */
+.details-row td {
+  background: var(--surface2);
+  padding: 16px 20px;
+}
+
+.details-box {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.details-meta {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.details-meta div strong {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.nested-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+.nested-table th {
+  background: var(--surface);
+}
+
+/* ── SEARCH TERM CELL ─────────────────────────────────── */
+.search-term-cell {
+  max-width: 260px;
+  word-break: break-word;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ── SELECTED ROW ─────────────────────────────────────── */
+.selected td {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.clickable {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.clickable:hover {
+  text-decoration: underline;
+}
+
+/* ── LINKS ────────────────────────────────────────────── */
+a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── WEEK PLANNER ─────────────────────────────────────── */
 .week-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
+
+.week-header h3 { margin-bottom: 4px; }
 
 .week-actions {
   display: flex;
@@ -586,14 +898,16 @@ textarea {
   grid-template-columns: repeat(7, minmax(180px, 1fr));
   gap: 12px;
   overflow-x: auto;
+  padding-bottom: 8px;
 }
 
 .day-column {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 12px;
   min-height: 240px;
-  background: #fafafa;
+  background: var(--surface2);
+  transition: background 0.2s;
 }
 
 .day-header {
@@ -602,11 +916,19 @@ textarea {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text);
 }
 
 .small-button {
-  padding: 6px 10px;
+  padding: 4px 9px;
+  font-size: 12px;
+  background: rgba(99,102,241,0.12);
+  color: var(--primary);
+  border: none;
+  border-radius: 6px;
 }
+.small-button:hover { background: rgba(99,102,241,0.22); transform: none; }
 
 .meal-list {
   display: flex;
@@ -615,71 +937,202 @@ textarea {
 }
 
 .meal-card {
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  transition: background 0.2s;
 }
 
 .meal-card.completed {
-  opacity: 0.75;
-  background: #f2f8f2;
+  opacity: 0.65;
+  border-color: rgba(16,185,129,0.3);
+  background: rgba(16,185,129,0.04);
 }
 
 .meal-topline {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .meal-title {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 13px;
   margin-bottom: 6px;
+  color: var(--text);
 }
 
 .status {
-  font-weight: 400;
-  color: #0a7a2f;
+  font-weight: 500;
+  color: #10b981;
 }
 
 .meal-notes {
-  font-size: 0.95rem;
-  opacity: 0.85;
+  font-size: 12px;
+  color: var(--text-muted);
   margin-bottom: 8px;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
+  line-height: 1.4;
 }
 
 .empty-day {
-  opacity: 0.7;
-  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 8px;
 }
 
-.error {
-  color: #b00020;
-  margin-bottom: 16px;
+/* ── INGREDIENT MISSING/COVERED ───────────────────────── */
+.missing {
+  color: #ef4444;
+  font-weight: 700;
 }
 
-.success {
-  color: #0a7a2f;
+.covered {
+  color: #10b981;
+  font-weight: 700;
+}
+
+/* ── SHOPPING LIST ────────────────────────────────────── */
+.checked {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.to-buy {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.hint {
   margin-bottom: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.totals {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.total-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 20px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.total-box strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+/* ── STORE SUMMARY ─────────────────────────────────────── */
+.store-summary-card {
+  margin-bottom: 20px;
+}
+
+.best td {
+  background: rgba(16,185,129,0.05);
+}
+
+.best-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  background: rgba(16,185,129,0.15);
+  color: #10b981;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 700;
+}
+
+.complete {
+  color: #10b981;
+  font-weight: 700;
+}
+
+.partial {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+/* ── PRICE OPTIONS ─────────────────────────────────────── */
+.price-options-row td {
+  background: var(--surface2);
+  padding: 16px 20px;
+}
+
+.price-options-wrapper {
+  padding: 4px 0;
+}
+
+.no-price-options {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+
+.price-option-form {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-top: 12px;
+  background: var(--surface);
+}
+
+.price-option-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* ── RESPONSIVE ───────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .price-option-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1200px) {
   .week-grid {
-    grid-template-columns: repeat(7, 220px);
+    grid-template-columns: repeat(7, 200px);
   }
 }
 
 @media (max-width: 900px) {
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .headline-row,
+  .table-header,
   .week-header {
     flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 540px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  section {
+    padding: 20px 16px;
   }
 }
 </style>
