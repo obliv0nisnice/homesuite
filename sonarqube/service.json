@@ -1,7 +1,0 @@
-{
-  "id": "sonarqube",
-  "name": "SonarQube",
-  "icon": "📊",
-  "category": "monitoring",
-  "description": "Code quality and security analysis platform"
-}
