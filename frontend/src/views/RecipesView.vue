@@ -322,125 +322,133 @@ async function addRecipeToShoppingList() {
 onMounted(loadData)
 </script>
 
+
 <template>
-  <section>
-    <h2>Rezepte</h2>
-
-    <p v-if="loading">Lade Daten...</p>
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="success" class="success">{{ success }}</p>
-
-    <div class="grid">
-      <div class="card">
-        <h3>Neues Rezept</h3>
-
-        <form class="form" @submit.prevent="createRecipe">
-          <input v-model="newRecipe.name" type="text" placeholder="Rezeptname" required />
-          <input
-            v-model="newRecipe.baseServings"
-            type="number"
-            min="1"
-            step="1"
-            placeholder="Basis-Portionen"
-            required
-          />
-          <textarea v-model="newRecipe.description" placeholder="Beschreibung"></textarea>
-          <button type="submit">Speichern</button>
-        </form>
-      </div>
-
-      <div class="card">
-        <h3>Zutat hinzufügen</h3>
-
-        <form class="form" @submit.prevent="createIngredient">
-          <input v-model="newIngredient.name" type="text" placeholder="Zutat" required />
-          <input v-model="newIngredient.quantity" type="number" step="0.01" placeholder="Menge" required />
-          <input v-model="newIngredient.unit" type="text" placeholder="Einheit" required />
-          <button type="submit" :disabled="!selectedRecipeId">Speichern</button>
-        </form>
+  <div class="dashboard-page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Rezepte <span class="title-accent">Kochbuch</span></h1>
+        <p class="page-subtitle">Rezepte pflegen, Zutaten strukturieren und direkt in Einkaufslisten überführen.</p>
       </div>
     </div>
 
-    <div class="card">
-      <h3>Rezept in Einkaufsliste übernehmen</h3>
+    <div v-if="error" class="alert alert-error">{{ error }}</div>
+    <div v-if="success" class="alert alert-success">{{ success }}</div>
+    <div v-if="loading" class="alert">Lade Rezeptdaten…</div>
 
-      <div class="form">
-        <select v-model="selectedShoppingListId">
-          <option disabled value="">Einkaufsliste wählen</option>
-          <option v-for="list in shoppingLists" :key="list.id" :value="list.id">
-            {{ list.name }}
-          </option>
-        </select>
+    <div class="content-grid">
+      <div class="stack">
+        <div class="form-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Neues Rezept</h2>
+              <p class="card-copy">Name, Beschreibung und Basis-Portionen als saubere Grundlage.</p>
+            </div>
+          </div>
 
-        <button
-          type="button"
-          :disabled="!selectedRecipeId || !selectedShoppingListId"
-          @click="addRecipeToShoppingList"
-        >
-          Zutaten in Einkaufsliste übernehmen
-        </button>
+          <form @submit.prevent="createRecipe">
+            <div class="form-grid full">
+              <input v-model="newRecipe.name" type="text" placeholder="Rezeptname" required />
+              <input v-model="newRecipe.baseServings" type="number" min="1" step="1" placeholder="Basis-Portionen" required />
+              <textarea v-model="newRecipe.description" placeholder="Beschreibung"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="btn-add" type="submit">Rezept speichern</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="form-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Rezept in Einkaufsliste übernehmen</h2>
+              <p class="card-copy">Ein einzelnes Rezept gezielt auf eine bestehende Liste setzen.</p>
+            </div>
+          </div>
+
+          <div class="form-grid full">
+            <select v-model="selectedRecipeId">
+              <option disabled value="">Rezept wählen</option>
+              <option v-for="recipe in recipes" :key="recipe.id" :value="recipe.id">{{ recipe.name }}</option>
+            </select>
+            <select v-model="selectedShoppingListId">
+              <option disabled value="">Einkaufsliste wählen</option>
+              <option v-for="list in shoppingLists" :key="list.id" :value="list.id">{{ list.name }}</option>
+            </select>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn-add" type="button" @click="addRecipeToShoppingList">Zur Einkaufsliste hinzufügen</button>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <h3>Rezepte</h3>
+      <div class="data-card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Rezeptübersicht</h2>
+            <p class="card-copy">Rezept auswählen, bearbeiten und Zutaten direkt pflegen.</p>
+          </div>
+        </div>
 
-      <table v-if="recipes.length > 0">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Basis-Portionen</th>
-            <th>Beschreibung</th>
-            <th>Zutaten</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="recipe in recipes"
-            :key="recipe.id"
-            :class="{ selected: selectedRecipeId === recipe.id }"
-          >
+        <div v-if="recipes.length > 0" class="compact-list">
+          <div v-for="recipe in recipes" :key="recipe.id" class="compact-item">
             <template v-if="editRecipeId === recipe.id">
-              <td>
+              <div class="form-grid full">
                 <input v-model="editRecipe.name" type="text" />
-              </td>
-              <td>
                 <input v-model="editRecipe.baseServings" type="number" min="1" step="1" />
-              </td>
-              <td>
-                <textarea v-model="editRecipe.description"></textarea>
-              </td>
-              <td>{{ recipe.ingredients.length }}</td>
-              <td class="actions">
-                <button @click="updateRecipe(recipe.id)">Speichern</button>
-                <button @click="cancelEditRecipe">Abbrechen</button>
-              </td>
+                <textarea v-model="editRecipe.description" placeholder="Beschreibung"></textarea>
+              </div>
+              <div class="form-actions">
+                <button class="btn-save" @click="updateRecipe(recipe.id)">Speichern</button>
+                <button class="btn-secondary" @click="cancelEditRecipe">Abbrechen</button>
+              </div>
             </template>
 
             <template v-else>
-              <td @click="selectedRecipeId = recipe.id" class="clickable">{{ recipe.name }}</td>
-              <td>{{ recipe.baseServings }}</td>
-              <td>{{ recipe.description || '—' }}</td>
-              <td>{{ recipe.ingredients.length }}</td>
-              <td class="actions">
-                <button @click="selectedRecipeId = recipe.id">Öffnen</button>
-                <button @click="startEditRecipe(recipe)">Bearbeiten</button>
-                <button @click="deleteRecipe(recipe.id)">Löschen</button>
-              </td>
-            </template>
-          </tr>
-        </tbody>
-      </table>
+              <div class="card-header" style="margin-bottom: 8px;">
+                <div>
+                  <div style="font-weight:800; font-size:18px;">{{ recipe.name }}</div>
+                  <div class="card-copy" v-if="recipe.description">{{ recipe.description }}</div>
+                </div>
+                <span class="badge badge-primary">{{ recipe.baseServings }} Portionen</span>
+              </div>
 
-      <p v-else>Noch keine Rezepte vorhanden.</p>
+              <div class="actions">
+                <button class="btn-secondary" @click="selectedRecipeId = recipe.id">Auswählen</button>
+                <button class="btn-secondary" @click="startEditRecipe(recipe)">Bearbeiten</button>
+                <button class="btn-danger" @click="deleteRecipe(recipe.id)">Löschen</button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div v-else class="empty-state">Noch keine Rezepte vorhanden.</div>
+      </div>
     </div>
 
-    <div class="card" v-if="selectedRecipe">
-      <h3>Zutaten für „{{ selectedRecipe.name }}“</h3>
-      <p><strong>Basis-Portionen:</strong> {{ selectedRecipe.baseServings }}</p>
+    <div v-if="selectedRecipe" class="data-card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">Zutaten für „{{ selectedRecipe.name }}“</h2>
+          <p class="card-copy">Pflege die Zutaten direkt am Rezept – sauber, knapp, eindeutig.</p>
+        </div>
+      </div>
 
-      <table v-if="selectedRecipe.ingredients.length > 0">
+      <div class="form-card" style="padding: 0; border: none; box-shadow:none; background:transparent;">
+        <form @submit.prevent="createIngredient">
+          <div class="form-grid">
+            <input v-model="newIngredient.name" type="text" placeholder="Zutat" required />
+            <input v-model="newIngredient.quantity" type="number" min="0" step="0.01" placeholder="Menge" required />
+            <input v-model="newIngredient.unit" type="text" placeholder="Einheit" required />
+          </div>
+          <div class="form-actions">
+            <button class="btn-add" type="submit">Zutat hinzufügen</button>
+          </div>
+        </form>
+      </div>
+
+      <table v-if="selectedRecipe.ingredients.length > 0" class="data-table" style="margin-top: 18px;">
         <thead>
           <tr>
             <th>Name</th>
@@ -452,18 +460,12 @@ onMounted(loadData)
         <tbody>
           <tr v-for="ingredient in selectedRecipe.ingredients" :key="ingredient.id">
             <template v-if="editIngredientId === ingredient.id">
-              <td>
-                <input v-model="editIngredient.name" type="text" />
-              </td>
-              <td>
-                <input v-model="editIngredient.quantity" type="number" step="0.01" />
-              </td>
-              <td>
-                <input v-model="editIngredient.unit" type="text" />
-              </td>
+              <td><input v-model="editIngredient.name" type="text" /></td>
+              <td><input v-model="editIngredient.quantity" type="number" min="0" step="0.01" /></td>
+              <td><input v-model="editIngredient.unit" type="text" /></td>
               <td class="actions">
-                <button @click="updateIngredient(ingredient.id)">Speichern</button>
-                <button @click="cancelEditIngredient">Abbrechen</button>
+                <button class="btn-save" @click="updateIngredient(ingredient.id)">Speichern</button>
+                <button class="btn-secondary" @click="cancelEditIngredient">Abbrechen</button>
               </td>
             </template>
 
@@ -472,626 +474,429 @@ onMounted(loadData)
               <td>{{ ingredient.quantity }}</td>
               <td>{{ ingredient.unit }}</td>
               <td class="actions">
-                <button @click="startEditIngredient(ingredient)">Bearbeiten</button>
-                <button @click="deleteIngredient(ingredient.id)">Löschen</button>
+                <button class="btn-secondary" @click="startEditIngredient(ingredient)">Bearbeiten</button>
+                <button class="btn-danger" @click="deleteIngredient(ingredient.id)">Löschen</button>
               </td>
             </template>
           </tr>
         </tbody>
       </table>
 
-      <p v-else>Dieses Rezept enthält noch keine Zutaten.</p>
+      <div v-else class="empty-state" style="margin-top: 18px;">Dieses Rezept enthält noch keine Zutaten.</div>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
-/* ── PAGE WRAPPER ─────────────────────────────────────── */
-section {
+.dashboard-page {
   max-width: 1200px;
   margin: 0 auto;
   padding: 32px 24px;
-}
-
-/* ── PAGE HEADING ─────────────────────────────────────── */
-h2 {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.8px;
-  margin-bottom: 4px;
-}
-
-h3 {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 16px;
-}
-
-h4 {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 10px;
-}
-
-h5 {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* ── HEADLINE ROW ─────────────────────────────────────── */
-.headline-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-  margin-bottom: 24px;
-}
-
-.muted {
-  color: var(--text-muted);
-  margin-top: 4px;
-  font-size: 14px;
-}
-
-/* ── ALERTS ───────────────────────────────────────────── */
-.error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  color: #ef4444;
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 16px;
-}
-
-.success {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  color: #10b981;
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 16px;
-}
-
-/* ── SUMMARY / STAT GRID ──────────────────────────────── */
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.big {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--primary);
-  letter-spacing: -1px;
-  margin-top: 4px;
-}
-
-/* ── CARD ─────────────────────────────────────────────── */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
-  margin-bottom: 20px;
-  box-shadow: var(--card-shadow);
-  transition: background 0.3s ease, border-color 0.3s ease;
-}
-
-/* ── TABLE HEADER ─────────────────────────────────────── */
-.table-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-/* ── FORM ─────────────────────────────────────────────── */
-.form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
 }
 
-.compact-form {
-  gap: 8px;
-}
-
-/* ── INPUTS ───────────────────────────────────────────── */
-input:not([type="checkbox"]),
-select,
-textarea {
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s, background 0.2s;
-}
-
-input:not([type="checkbox"]):focus,
-select:focus,
-textarea:focus {
-  border-color: var(--primary);
-  background: var(--surface);
-}
-
-textarea {
-  min-height: 80px;
-  resize: vertical;
-}
-
-input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-
-.checkbox-row {
+.page-header {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 14px;
-  color: var(--text);
-  cursor: pointer;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
-/* ── BUTTONS ──────────────────────────────────────────── */
-button {
-  padding: 9px 18px;
-  border-radius: var(--radius-sm);
-  border: none;
-  font: inherit;
-  font-size: 13px;
+.page-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -1px;
+  margin: 0;
+}
+
+.title-accent { color: var(--primary); }
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.page-actions,
+.header-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.alert {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm, 12px);
+  font-size: 14px;
+  border: 1px solid transparent;
+}
+
+.alert-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.alert-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.btn-add,
+.btn-save,
+.btn-secondary,
+.btn-danger,
+.btn-ghost,
+.small-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s, transform 0.1s, background 0.2s;
-  background: var(--primary);
-  color: white;
+  transition: opacity 0.2s, transform 0.12s ease;
+  text-decoration: none;
 }
 
-button:hover:not(:disabled) {
-  opacity: 0.88;
+.btn-add,
+.btn-save {
+  background: var(--primary);
+  color: white;
+  border: none;
+}
+
+.btn-secondary,
+.small-button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-danger {
+  background: rgba(239,68,68,0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.18);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px dashed var(--border);
+}
+
+.btn-add:hover,
+.btn-save:hover,
+.btn-secondary:hover,
+.btn-danger:hover,
+.btn-ghost:hover,
+.small-button:hover {
+  opacity: 0.95;
   transform: translateY(-1px);
 }
 
-button:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Secondary / cancel variant — applied by class */
-button.btn-secondary,
-button[data-variant="secondary"] {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1.5px solid var(--border);
-}
-
-/* ── TABLE ────────────────────────────────────────────── */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-thead {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-th {
-  padding: 10px 12px;
-  background: var(--surface2);
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  text-align: left;
-  border-bottom: 2px solid var(--border);
-}
-
-td {
-  padding: 11px 12px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  vertical-align: middle;
-  color: var(--text);
-}
-
-tbody tr:hover {
-  background: var(--surface2);
-}
-
-tbody tr:last-child td {
-  border-bottom: none;
-}
-
-/* ── GRID LAYOUT ──────────────────────────────────────── */
-.grid {
+.stats-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-/* ── ACTIONS CELL ─────────────────────────────────────── */
-.actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.actions button {
-  padding: 6px 12px;
-  font-size: 12px;
-}
-
-/* "Abbrechen" style for inline cancel buttons */
-.actions button:last-child:not(:first-child) {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1.5px solid var(--border);
-}
-
-/* ── DETAILS / NESTED ROWS ────────────────────────────── */
-.details-row td {
-  background: var(--surface2);
-  padding: 16px 20px;
-}
-
-.details-box {
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-}
-
-.details-meta {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.details-meta div strong {
-  color: var(--text-muted);
-  font-weight: 600;
-}
-
-.nested-table {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  margin-top: 4px;
-  margin-bottom: 12px;
-}
-
-.nested-table th {
-  background: var(--surface);
-}
-
-/* ── SEARCH TERM CELL ─────────────────────────────────── */
-.search-term-cell {
-  max-width: 260px;
-  word-break: break-word;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-/* ── SELECTED ROW ─────────────────────────────────────── */
-.selected td {
-  background: rgba(99, 102, 241, 0.06);
-}
-
-.clickable {
-  cursor: pointer;
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.clickable:hover {
-  text-decoration: underline;
-}
-
-/* ── LINKS ────────────────────────────────────────────── */
-a {
-  color: var(--primary);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-/* ── WEEK PLANNER ─────────────────────────────────────── */
-.week-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.week-header h3 { margin-bottom: 4px; }
-
-.week-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.week-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(180px, 1fr));
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-}
-
-.day-column {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 14px 12px;
-  min-height: 240px;
-  background: var(--surface2);
-  transition: background 0.2s;
-}
-
-.day-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.small-button {
-  padding: 4px 9px;
-  font-size: 12px;
-  background: rgba(99,102,241,0.12);
-  color: var(--primary);
-  border: none;
-  border-radius: 6px;
-}
-.small-button:hover { background: rgba(99,102,241,0.22); transform: none; }
-
-.meal-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.meal-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  transition: background 0.2s;
-}
-
-.meal-card.completed {
-  opacity: 0.65;
-  border-color: rgba(16,185,129,0.3);
-  background: rgba(16,185,129,0.04);
-}
-
-.meal-topline {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.meal-title {
-  font-weight: 700;
-  font-size: 13px;
-  margin-bottom: 6px;
-  color: var(--text);
-}
-
-.status {
-  font-weight: 500;
-  color: #10b981;
-}
-
-.meal-notes {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-
-.empty-day {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin-top: 8px;
-}
-
-/* ── INGREDIENT MISSING/COVERED ───────────────────────── */
-.missing {
-  color: #ef4444;
-  font-weight: 700;
-}
-
-.covered {
-  color: #10b981;
-  font-weight: 700;
-}
-
-/* ── SHOPPING LIST ────────────────────────────────────── */
-.checked {
-  text-decoration: line-through;
-  opacity: 0.5;
-}
-
-.to-buy {
-  font-weight: 700;
-  color: var(--primary);
-}
-
-.hint {
-  margin-bottom: 16px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.totals {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.total-box {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 14px 20px;
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.total-box strong {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--primary);
-}
-
-/* ── STORE SUMMARY ─────────────────────────────────────── */
-.store-summary-card {
-  margin-bottom: 20px;
-}
-
-.best td {
-  background: rgba(16,185,129,0.05);
-}
-
-.best-badge {
-  margin-left: 8px;
-  font-size: 11px;
-  background: rgba(16,185,129,0.15);
-  color: #10b981;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-weight: 700;
-}
-
-.complete {
-  color: #10b981;
-  font-weight: 700;
-}
-
-.partial {
-  color: #f59e0b;
-  font-weight: 700;
-}
-
-/* ── PRICE OPTIONS ─────────────────────────────────────── */
-.price-options-row td {
-  background: var(--surface2);
-  padding: 16px 20px;
-}
-
-.price-options-wrapper {
-  padding: 4px 0;
-}
-
-.no-price-options {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 8px 0 12px;
-}
-
-.price-option-form {
-  border: 1.5px dashed var(--border);
-  border-radius: var(--radius-sm);
-  padding: 16px;
-  margin-top: 12px;
-  background: var(--surface);
-}
-
-.price-option-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-/* ── RESPONSIVE ───────────────────────────────────────── */
-@media (max-width: 1100px) {
-  .price-option-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 1200px) {
-  .week-grid {
-    grid-template-columns: repeat(7, 200px);
-  }
 }
 
 @media (max-width: 900px) {
-  .summary-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .grid {
-    grid-template-columns: 1fr;
-  }
-
-  .headline-row,
-  .table-header,
-  .week-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
-@media (max-width: 540px) {
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 560px) {
+  .stats-grid { grid-template-columns: 1fr; }
+}
 
-  section {
-    padding: 20px 16px;
+.stat-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border);
+}
+
+.stat-icon { font-size: 30px; z-index: 1; }
+.stat-info { display: flex; flex-direction: column; gap: 3px; z-index: 1; }
+.stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.stat-bg-shape {
+  position: absolute;
+  right: -20px;
+  top: -20px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  opacity: 0.06;
+  background: var(--primary);
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) 1fr;
+  gap: 20px;
+}
+
+.content-grid.single {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 980px) {
+  .content-grid { grid-template-columns: 1fr; }
+}
+
+.panel-card,
+.form-card,
+.data-card,
+.side-card,
+.week-card,
+.list-card,
+.sheet-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border);
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+}
+
+.card-copy,
+.hint,
+.muted,
+.empty-state {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px;
+}
+
+.form-grid.full {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 700px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+.field-span-2 { grid-column: span 2; }
+@media (max-width: 700px) { .field-span-2 { grid-column: span 1; } }
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  padding: 12px 14px;
+  min-height: 46px;
+  box-sizing: border-box;
+}
+
+textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.checkbox-row,
+.inline-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.inline-checkbox input,
+.checkbox-row input {
+  width: auto;
+  min-height: auto;
+}
+
+.data-table,
+.nested-table,
+.paper-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td,
+.nested-table th,
+.nested-table td,
+.paper-table th,
+.paper-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: left;
+}
+
+.data-table thead th,
+.nested-table thead th,
+.paper-table thead th {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.data-table tbody tr:hover,
+.paper-table tbody tr:hover {
+  background: rgba(99,102,241,0.04);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status-chip,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.badge-primary,
+.status-chip.primary { background: rgba(99,102,241,0.12); color: var(--primary); }
+.badge-success,
+.status-chip.success { background: rgba(16,185,129,0.12); color: #10b981; }
+.badge-warning,
+.status-chip.warning { background: rgba(245,158,11,0.12); color: #d97706; }
+.badge-danger,
+.status-chip.danger { background: rgba(239,68,68,0.12); color: #ef4444; }
+
+.empty-state {
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  text-align: center;
+}
+
+.split-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 780px) { .split-meta { grid-template-columns: 1fr; } }
+
+.meta-tile {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.meta-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+}
+
+.meta-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.compact-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.clickable { cursor: pointer; }
+.clickable:hover { color: var(--primary); }
+
+@media (max-width: 720px) {
+  .data-table,
+  .nested-table,
+  .paper-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 }
 </style>

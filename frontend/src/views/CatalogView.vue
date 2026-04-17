@@ -258,252 +258,541 @@ async function refreshAllPrices() {
 onMounted(loadData)
 </script>
 
+
 <template>
-  <section>
-    <div class="headline-row">
+  <div class="dashboard-page">
+    <div class="page-header">
       <div>
-        <h2>Katalog</h2>
-        <p class="muted">
-          Pflege Artikelstammdaten und teste den Crawler per Freitext oder direkter BILLA-URL.
-        </p>
+        <h1 class="page-title">Katalog <span class="title-accent">Preiszentrale</span></h1>
+        <p class="page-subtitle">Artikelstamm, Suchbegriffe und Preisquellen für deine Einkaufslogik.</p>
       </div>
-      <button @click="refreshAllPrices">Alle Preise aktualisieren</button>
-    </div>
 
-    <p v-if="loading">Lade Daten...</p>
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="success" class="success">{{ success }}</p>
-
-    <div class="summary-grid">
-      <div class="card">
-        <h3>Artikel gesamt</h3>
-        <p class="big">{{ items.length }}</p>
-      </div>
-      <div class="card">
-        <h3>Grundartikel</h3>
-        <p class="big">{{ stapleCount }}</p>
-      </div>
-      <div class="card">
-        <h3>Mit Preisquellen</h3>
-        <p class="big">{{ pricedCount }}</p>
+      <div class="page-actions">
+        <button class="btn-secondary" @click="loadData">Neu laden</button>
+        <button class="btn-add" @click="refreshAllPrices">Alle Preise aktualisieren</button>
       </div>
     </div>
 
-    <div class="card">
-      <h3>Neuen Katalogeintrag anlegen</h3>
+    <div v-if="error" class="alert alert-error">{{ error }}</div>
+    <div v-if="success" class="alert alert-success">{{ success }}</div>
+    <div v-if="loading" class="alert">Lade Katalogdaten…</div>
 
-      <form class="form" @submit.prevent="createItem">
-        <input v-model="newItem.name" type="text" placeholder="Name" required />
-        <input v-model="newItem.defaultUnit" type="text" placeholder="Standard-Einheit" required />
-        <input v-model="newItem.category" type="text" placeholder="Kategorie" />
-        <input
-          v-model="newItem.searchTerm"
-          type="text"
-          placeholder="Crawler-Suchbegriff oder direkte BILLA-URL"
-        />
-        <input v-model="newItem.brandHint" type="text" placeholder="Markenhinweis" />
-
-        <label class="checkbox-row">
-          <input v-model="newItem.isStaple" type="checkbox" />
-          Grundartikel
-        </label>
-
-        <button type="submit">Speichern</button>
-      </form>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">📦</div>
+        <div class="stat-info">
+          <span class="stat-label">Artikel gesamt</span>
+          <span class="stat-value">{{ items.length }}</span>
+        </div>
+        <div class="stat-bg-shape"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🥫</div>
+        <div class="stat-info">
+          <span class="stat-label">Grundartikel</span>
+          <span class="stat-value">{{ stapleCount }}</span>
+        </div>
+        <div class="stat-bg-shape"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🏷️</div>
+        <div class="stat-info">
+          <span class="stat-label">Mit Preisquellen</span>
+          <span class="stat-value">{{ pricedCount }}</span>
+        </div>
+        <div class="stat-bg-shape"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⚡</div>
+        <div class="stat-info">
+          <span class="stat-label">Ohne Preisquelle</span>
+          <span class="stat-value">{{ items.length - pricedCount }}</span>
+        </div>
+        <div class="stat-bg-shape"></div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="table-header">
-        <h3>Katalogeinträge</h3>
-        <button @click="loadData">Neu laden</button>
+    <div class="content-grid">
+      <div class="stack">
+        <div class="form-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Neuen Katalogeintrag anlegen</h2>
+              <p class="card-copy">Pflege Stammdaten und einen guten Suchbegriff für den Crawler.</p>
+            </div>
+          </div>
+
+          <form @submit.prevent="createItem">
+            <div class="form-grid">
+              <input v-model="newItem.name" type="text" placeholder="Name" required />
+              <input v-model="newItem.defaultUnit" type="text" placeholder="Standard-Einheit" required />
+              <input v-model="newItem.category" type="text" placeholder="Kategorie" />
+              <input v-model="newItem.brandHint" type="text" placeholder="Markenhinweis" />
+              <input
+                v-model="newItem.searchTerm"
+                class="field-span-2"
+                type="text"
+                placeholder="Crawler-Suchbegriff oder direkte BILLA-URL"
+              />
+            </div>
+
+            <div class="form-actions">
+              <label class="checkbox-row">
+                <input v-model="newItem.isStaple" type="checkbox" />
+                Grundartikel
+              </label>
+              <button class="btn-add" type="submit">Speichern</button>
+            </div>
+          </form>
+        </div>
       </div>
 
-      <table v-if="items.length > 0">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Einheit</th>
-            <th>Kategorie</th>
-            <th>Suchbegriff</th>
-            <th>Marke</th>
-            <th>Grundartikel</th>
-            <th>Bester Preis</th>
-            <th>Quellen</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="item in items" :key="item.id">
+      <div class="data-card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">Katalogeinträge</h2>
+            <p class="card-copy">Detailansicht mit Händlerpreisen, Suchbegriffen und schnellen Aktionen.</p>
+          </div>
+        </div>
+
+        <table v-if="items.length > 0" class="data-table">
+          <thead>
             <tr>
-              <template v-if="editingItemId === item.id">
-                <td><input v-model="editItem.name" type="text" /></td>
-                <td><input v-model="editItem.defaultUnit" type="text" /></td>
-                <td><input v-model="editItem.category" type="text" /></td>
-                <td><input v-model="editItem.searchTerm" type="text" /></td>
-                <td><input v-model="editItem.brandHint" type="text" /></td>
-                <td>
-                  <input v-model="editItem.isStaple" type="checkbox" />
-                </td>
-                <td>{{ formatPrice(item.bestTotalPrice) }}</td>
-                <td>{{ item.prices?.length ?? 0 }}</td>
-                <td class="actions">
-                  <button @click="updateItem(item.id)">Speichern</button>
-                  <button @click="cancelEditItem">Abbrechen</button>
-                </td>
-              </template>
-
-              <template v-else>
-                <td>{{ item.name }}</td>
-                <td>{{ item.defaultUnit }}</td>
-                <td>{{ item.category || '—' }}</td>
-                <td class="search-term-cell">{{ item.searchTerm || '—' }}</td>
-                <td>{{ item.brandHint || '—' }}</td>
-                <td>{{ item.isStaple ? 'Ja' : 'Nein' }}</td>
-                <td>{{ formatPrice(item.bestTotalPrice) }}</td>
-                <td>{{ item.prices?.length ?? 0 }}</td>
-                <td class="actions">
-                  <button @click="toggleDetails(item.id)">
-                    {{ expandedItemId === item.id ? 'Details ausblenden' : 'Details' }}
-                  </button>
-                  <button @click="refreshItemPrices(item.id)">Preise holen</button>
-                  <button @click="startEditItem(item)">Bearbeiten</button>
-                  <button @click="deleteItem(item.id)">Löschen</button>
-                </td>
-              </template>
+              <th>Name</th>
+              <th>Einheit</th>
+              <th>Kategorie</th>
+              <th>Suchbegriff</th>
+              <th>Marke</th>
+              <th>Bestpreis</th>
+              <th>Quellen</th>
+              <th>Aktionen</th>
             </tr>
+          </thead>
+          <tbody>
+            <template v-for="item in items" :key="item.id">
+              <tr>
+                <template v-if="editingItemId === item.id">
+                  <td><input v-model="editItem.name" type="text" /></td>
+                  <td><input v-model="editItem.defaultUnit" type="text" /></td>
+                  <td><input v-model="editItem.category" type="text" /></td>
+                  <td><input v-model="editItem.searchTerm" type="text" /></td>
+                  <td><input v-model="editItem.brandHint" type="text" /></td>
+                  <td>{{ formatPrice(item.bestTotalPrice) }}</td>
+                  <td>{{ item.prices?.length ?? 0 }}</td>
+                  <td class="actions">
+                    <button class="btn-save" @click="updateItem(item.id)">Speichern</button>
+                    <button class="btn-secondary" @click="cancelEditItem">Abbrechen</button>
+                  </td>
+                </template>
 
-            <tr v-if="expandedItemId === item.id" class="details-row">
-              <td colspan="9">
-                <div class="details-box">
-                  <div class="details-meta">
-                    <div><strong>Bester Einheitspreis:</strong> {{ formatPrice(item.bestUnitPrice) }}</div>
-                    <div><strong>Bester Gesamtpreis:</strong> {{ formatPrice(item.bestTotalPrice) }}</div>
-                    <div><strong>Suchbegriff:</strong> {{ item.searchTerm || '—' }}</div>
+                <template v-else>
+                  <td>
+                    <div class="compact-list">
+                      <strong>{{ item.name }}</strong>
+                      <span :class="['badge', item.isStaple ? 'badge-success' : 'badge-primary']">
+                        {{ item.isStaple ? 'Grundartikel' : 'Standardartikel' }}
+                      </span>
+                    </div>
+                  </td>
+                  <td>{{ item.defaultUnit }}</td>
+                  <td>{{ item.category || '—' }}</td>
+                  <td>{{ item.searchTerm || '—' }}</td>
+                  <td>{{ item.brandHint || '—' }}</td>
+                  <td>{{ formatPrice(item.bestTotalPrice) }}</td>
+                  <td>{{ item.prices?.length ?? 0 }}</td>
+                  <td class="actions">
+                    <button class="btn-secondary" @click="toggleDetails(item.id)">
+                      {{ expandedItemId === item.id ? 'Details ausblenden' : 'Details' }}
+                    </button>
+                    <button class="btn-ghost" @click="refreshItemPrices(item.id)">Preise holen</button>
+                    <button class="btn-secondary" @click="startEditItem(item)">Bearbeiten</button>
+                    <button class="btn-danger" @click="deleteItem(item.id)">Löschen</button>
+                  </td>
+                </template>
+              </tr>
+
+              <tr v-if="expandedItemId === item.id">
+                <td colspan="8">
+                  <div class="compact-item">
+                    <div class="split-meta">
+                      <div class="meta-tile">
+                        <span class="meta-label">Bester Einheitspreis</span>
+                        <span class="meta-value">{{ formatPrice(item.bestUnitPrice) }}</span>
+                      </div>
+                      <div class="meta-tile">
+                        <span class="meta-label">Bester Gesamtpreis</span>
+                        <span class="meta-value">{{ formatPrice(item.bestTotalPrice) }}</span>
+                      </div>
+                      <div class="meta-tile">
+                        <span class="meta-label">Suchbegriff</span>
+                        <span class="meta-value" style="font-size: 14px;">{{ item.searchTerm || '—' }}</span>
+                      </div>
+                    </div>
+
+                    <table v-if="item.prices && item.prices.length > 0" class="nested-table" style="margin-top:16px;">
+                      <thead>
+                        <tr>
+                          <th>Shop</th>
+                          <th>Produkt</th>
+                          <th>Einzelpreis</th>
+                          <th>Gesamtpreis</th>
+                          <th>Stand</th>
+                          <th>Quelle</th>
+                          <th>Link</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="price in item.prices" :key="price.id">
+                          <td>{{ price.storeName }}</td>
+                          <td>{{ price.productName }}</td>
+                          <td>{{ formatPrice(price.unitPrice) }}</td>
+                          <td>{{ formatPrice(price.totalPrice) }}</td>
+                          <td>{{ formatDate(price.checkedAt) }}</td>
+                          <td>{{ price.sourceType }}</td>
+                          <td>
+                            <a v-if="price.productUrl" :href="price.productUrl" target="_blank" rel="noopener noreferrer">Öffnen</a>
+                            <span v-else>—</span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <div v-else class="empty-state" style="margin-top:16px;">Noch keine Preisquellen vorhanden.</div>
                   </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
 
-                  <table v-if="item.prices && item.prices.length > 0" class="nested-table">
-                    <thead>
-                      <tr>
-                        <th>Shop</th>
-                        <th>Produkt</th>
-                        <th>Einzelpreis</th>
-                        <th>Gesamtpreis</th>
-                        <th>Stand</th>
-                        <th>Quelle</th>
-                        <th>Link</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="price in item.prices" :key="price.id">
-                        <td>{{ price.storeName }}</td>
-                        <td>{{ price.productName }}</td>
-                        <td>{{ formatPrice(price.unitPrice) }}</td>
-                        <td>{{ formatPrice(price.totalPrice) }}</td>
-                        <td>{{ formatDate(price.checkedAt) }}</td>
-                        <td>{{ price.sourceType }}</td>
-                        <td>
-                          <a
-                            v-if="price.productUrl"
-                            :href="price.productUrl"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Öffnen
-                          </a>
-                          <span v-else>—</span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  <p v-else class="muted">Noch keine Preisquellen vorhanden.</p>
-                </div>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-
-      <p v-else>Noch keine Katalogeinträge vorhanden.</p>
+        <div v-else class="empty-state">Noch keine Katalogeinträge vorhanden.</div>
+      </div>
     </div>
-  </section>
+  </div>
 </template>
 
+
 <style scoped>
-.headline-row {
+.dashboard-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.muted {
-  color: #666;
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.page-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -1px;
+  margin: 0;
+}
+
+.title-accent { color: var(--primary); }
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: 14px;
   margin-top: 4px;
 }
 
-.summary-grid {
+.page-actions,
+.header-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.alert {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm, 12px);
+  font-size: 14px;
+  border: 1px solid transparent;
+}
+
+.alert-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.alert-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.btn-add,
+.btn-save,
+.btn-secondary,
+.btn-danger,
+.btn-ghost,
+.small-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.12s ease;
+  text-decoration: none;
+}
+
+.btn-add,
+.btn-save {
+  background: var(--primary);
+  color: white;
+  border: none;
+}
+
+.btn-secondary,
+.small-button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-danger {
+  background: rgba(239,68,68,0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.18);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px dashed var(--border);
+}
+
+.btn-add:hover,
+.btn-save:hover,
+.btn-secondary:hover,
+.btn-danger:hover,
+.btn-ghost:hover,
+.small-button:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  margin-bottom: 16px;
 }
 
-.card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
+@media (max-width: 900px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
-.big {
-  font-size: 1.5rem;
-  font-weight: 700;
+@media (max-width: 560px) {
+  .stats-grid { grid-template-columns: 1fr; }
 }
 
-.form {
+.stat-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border);
+}
+
+.stat-icon { font-size: 30px; z-index: 1; }
+.stat-info { display: flex; flex-direction: column; gap: 3px; z-index: 1; }
+.stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.stat-bg-shape {
+  position: absolute;
+  right: -20px;
+  top: -20px;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  opacity: 0.06;
+  background: var(--primary);
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) 1fr;
+  gap: 20px;
+}
+
+.content-grid.single {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 980px) {
+  .content-grid { grid-template-columns: 1fr; }
+}
+
+.panel-card,
+.form-card,
+.data-card,
+.side-card,
+.week-card,
+.list-card,
+.sheet-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border);
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+}
+
+.card-copy,
+.hint,
+.muted,
+.empty-state {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.stack {
   display: flex;
   flex-direction: column;
+  gap: 20px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
   gap: 12px;
+}
+
+.form-grid.full {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 700px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+.field-span-2 { grid-column: span 2; }
+@media (max-width: 700px) { .field-span-2 { grid-column: span 1; } }
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 input,
+textarea,
+select,
 button {
-  padding: 10px;
   font: inherit;
 }
 
-.checkbox-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+input,
+textarea,
+select {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  padding: 12px 14px;
+  min-height: 46px;
+  box-sizing: border-box;
 }
 
-.table-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  margin-bottom: 12px;
+textarea {
+  min-height: 104px;
+  resize: vertical;
 }
 
-table {
+.checkbox-row,
+.inline-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.inline-checkbox input,
+.checkbox-row input {
+  width: auto;
+  min-height: auto;
+}
+
+.data-table,
+.nested-table,
+.paper-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-th,
-td {
-  padding: 10px;
-  border-bottom: 1px solid #ddd;
+.data-table th,
+.data-table td,
+.nested-table th,
+.nested-table td,
+.paper-table th,
+.paper-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
   text-align: left;
-  vertical-align: middle;
 }
 
-.search-term-cell {
-  max-width: 260px;
-  word-break: break-word;
+.data-table thead th,
+.nested-table thead th,
+.paper-table thead th {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.data-table tbody tr:hover,
+.paper-table tbody tr:hover {
+  background: rgba(99,102,241,0.04);
 }
 
 .actions {
@@ -512,50 +801,87 @@ td {
   flex-wrap: wrap;
 }
 
-.details-row td {
-  background: #fafcff;
+.status-chip,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  width: fit-content;
 }
 
-.details-box {
+.badge-primary,
+.status-chip.primary { background: rgba(99,102,241,0.12); color: var(--primary); }
+.badge-success,
+.status-chip.success { background: rgba(16,185,129,0.12); color: #10b981; }
+.badge-warning,
+.status-chip.warning { background: rgba(245,158,11,0.12); color: #d97706; }
+.badge-danger,
+.status-chip.danger { background: rgba(239,68,68,0.12); color: #ef4444; }
+
+.empty-state {
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  text-align: center;
+}
+
+.split-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 780px) { .split-meta { grid-template-columns: 1fr; } }
+
+.meta-tile {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.meta-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+}
+
+.meta-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.compact-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
-.details-meta {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
+.compact-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
 }
 
-.nested-table {
-  border: 1px solid #e6e6e6;
-}
+.clickable { cursor: pointer; }
+.clickable:hover { color: var(--primary); }
 
-.error {
-  color: #b00020;
-  margin-bottom: 16px;
-}
-
-.success {
-  color: #0a7a2f;
-  margin-bottom: 16px;
-}
-
-a {
-  color: #0b57d0;
-}
-
-@media (max-width: 900px) {
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .headline-row,
-  .table-header {
-    flex-direction: column;
-    align-items: stretch;
+@media (max-width: 720px) {
+  .data-table,
+  .nested-table,
+  .paper-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 }
 </style>
-
