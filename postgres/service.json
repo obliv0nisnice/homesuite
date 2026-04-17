@@ -1,0 +1,7 @@
+{
+  "id": "postgres",
+  "name": "PostgreSQL",
+  "icon": "🐘",
+  "category": "db",
+  "description": "Relational database server"
+}
