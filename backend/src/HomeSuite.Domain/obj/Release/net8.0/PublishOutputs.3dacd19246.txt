@@ -1,0 +1,3 @@
+/home/jakob/homesuite/backend/publish/HomeSuite.Domain.dll
+/home/jakob/homesuite/backend/publish/HomeSuite.Domain.deps.json
+/home/jakob/homesuite/backend/publish/HomeSuite.Domain.pdb

@@ -1,0 +1,3 @@
+/tmp/homesuite-deploy-2026-04-16_22-41-58/backend/HomeSuite.Domain.dll
+/tmp/homesuite-deploy-2026-04-16_22-41-58/backend/HomeSuite.Domain.deps.json
+/tmp/homesuite-deploy-2026-04-16_22-41-58/backend/HomeSuite.Domain.pdb
