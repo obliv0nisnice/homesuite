@@ -1,1 +1,178 @@
-package-lock.json
+# ╔══════════════════════════════════════════════════════════╗
+# ║              HomeSuite — .gitignore                      ║
+# ║   .NET 8 · Vue 3 · PostgreSQL · Docker                  ║
+# ╚══════════════════════════════════════════════════════════╝
+
+
+# ── .NET Build Artifacts ─────────────────────────────────────────────────────
+
+**/bin/
+**/obj/
+**/publish/
+
+# NuGet
+*.nupkg
+*.snupkg
+**/packages/
+!**/packages/build/
+nuget.config.local
+
+# Entity Framework migrations snapshot (keep migrations themselves)
+# Uncomment if you don't want to track the snapshot:
+# **/Migrations/*ModelSnapshot.cs
+
+# ── .NET Secrets & Config ────────────────────────────────────────────────────
+
+# User secrets (never commit these)
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+**/secrets.json
+**/usersecrets/
+
+# Keep the base appsettings as a template
+!**/appsettings.json
+
+# .NET local tools manifest (optional — some teams commit this)
+# .config/dotnet-tools.json
+
+# ── Visual Studio & Rider ────────────────────────────────────────────────────
+
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.pidb
+*.booproj
+*.svd
+*.userprefs
+
+# Rider
+.idea/
+*.DotSettings.user
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings
+
+# NCrunch
+*.ncrunch*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# ── Vue / Node ───────────────────────────────────────────────────────────────
+
+frontend/node_modules/
+node_modules/
+
+# Vite build output
+frontend/dist/
+frontend/.vite/
+dist/
+.vite/
+
+# Vue environment files (commit .env.example instead)
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+.env
+.env.local
+.env.*.local
+
+# npm / yarn / pnpm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint cache
+.eslintcache
+
+# ── Docker & PostgreSQL ──────────────────────────────────────────────────────
+
+# Postgres data volume (if mounted locally)
+postgres/data/
+**/pgdata/
+
+# Docker env overrides (keep docker-compose.yml, ignore local overrides)
+docker-compose.override.yml
+docker-compose.local.yml
+postgres/config.env
+
+# ── OS & Editor ──────────────────────────────────────────────────────────────
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# ── Logs & Temp ──────────────────────────────────────────────────────────────
+
+logs/
+*.log
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# ── Certificates & Keys ──────────────────────────────────────────────────────
+
+*.pfx
+*.p12
+*.key
+*.pem
+*.cer
+*.crt
+
+# ASP.NET Core dev cert
+https/
+
+# ── Test Results ─────────────────────────────────────────────────────────────
+
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.trx
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+
+# Backup files
+*.bak
+*.orig
+*.rej
+
+# Tree output (regenerate with `tree` command when needed)
+homesuitetree.txt
+
+# Migration scripts generated for manual runs
+migrate.sh.bak
