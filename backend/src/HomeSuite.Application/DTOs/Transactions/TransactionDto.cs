@@ -11,4 +11,9 @@ public class TransactionDto
     public Guid CategoryId { get; set; }
     public string CategoryName { get; set; } = string.Empty;
     public string CategoryType { get; set; } = string.Empty;
+
+    // Recurring
+    public bool IsRecurring { get; set; }
+    public string? RecurringInterval { get; set; }
+    public DateTime? NextDueDate { get; set; }
 }

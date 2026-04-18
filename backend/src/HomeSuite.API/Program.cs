@@ -22,6 +22,7 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<ICatalogPriceCrawlerService, CatalogPriceCrawlerService>();
 builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
+builder.Services.AddHostedService<RecurringTransactionWorker>();
 
 builder.Services.AddHttpClient<SparPriceCrawlerSource>(client =>
 {

@@ -10,4 +10,9 @@ public class Transaction
 
     public Guid CategoryId { get; set; }
     public Category? Category { get; set; }
+
+    // Recurring
+    public bool IsRecurring { get; set; } = false;
+    public string? RecurringInterval { get; set; }  // "weekly" | "monthly" | "yearly"
+    public DateTime? NextDueDate { get; set; }       // wann die nächste Instanz fällig ist
 }

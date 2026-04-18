@@ -49,6 +49,11 @@ public class HomeSuiteDbContext : DbContext
             entity.Property(x => x.Amount).HasColumnType("numeric(12,2)");
             entity.Property(x => x.Date).IsRequired();
 
+            // Recurring
+            entity.Property(x => x.IsRecurring).IsRequired().HasDefaultValue(false);
+            entity.Property(x => x.RecurringInterval).HasMaxLength(20);
+            entity.Property(x => x.NextDueDate);
+
             entity.HasOne(x => x.Category)
                 .WithMany()
                 .HasForeignKey(x => x.CategoryId)

@@ -7,4 +7,8 @@ public class CreateTransactionRequest
     public DateTime Date { get; set; }
     public string? Note { get; set; }
     public Guid CategoryId { get; set; }
+
+    // Recurring
+    public bool IsRecurring { get; set; } = false;
+    public string? RecurringInterval { get; set; }  // "weekly" | "monthly" | "yearly"
 }
