@@ -20,6 +20,9 @@ public class ShoppingListService : IShoppingListService
     {
         return await _dbContext.ShoppingLists
             .Include(x => x.Items)
+                .ThenInclude(x => x.PriceOptions)
+            .Include(x => x.Items)
+                .ThenInclude(x => x.CatalogItem)
             .OrderByDescending(x => x.CreatedAt)
             .Select(MapToDto())
             .ToListAsync(cancellationToken);
@@ -29,6 +32,9 @@ public class ShoppingListService : IShoppingListService
     {
         return await _dbContext.ShoppingLists
             .Include(x => x.Items)
+                .ThenInclude(x => x.PriceOptions)
+            .Include(x => x.Items)
+                .ThenInclude(x => x.CatalogItem)
             .Where(x => x.Id == id)
             .Select(MapToDto())
             .FirstOrDefaultAsync(cancellationToken);
@@ -41,21 +47,8 @@ public class ShoppingListService : IShoppingListService
         var shoppingList = new ShoppingList
         {
             Name = request.Name.Trim(),
-            Store = string.IsNullOrWhiteSpace(request.Store) ? null : request.Store.Trim(),
-            EstimatedTotalPrice = request.EstimatedTotalPrice,
-            ActualTotalPrice = request.ActualTotalPrice,
-            Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
-            CreatedAt = DateTime.UtcNow,
-            CompletedAt = null
+            CreatedAt = DateTime.UtcNow
         };
-
-        if (request.Items is not null)
-        {
-            foreach (var item in request.Items)
-            {
-                shoppingList.Items.Add(CreateItemEntity(item));
-            }
-        }
 
         _dbContext.ShoppingLists.Add(shoppingList);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -69,7 +62,6 @@ public class ShoppingListService : IShoppingListService
         ValidateShoppingList(request.Name);
 
         var shoppingList = await _dbContext.ShoppingLists
-            .Include(x => x.Items)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 
         if (shoppingList is null)
@@ -78,21 +70,6 @@ public class ShoppingListService : IShoppingListService
         }
 
         shoppingList.Name = request.Name.Trim();
-        shoppingList.Store = string.IsNullOrWhiteSpace(request.Store) ? null : request.Store.Trim();
-        shoppingList.EstimatedTotalPrice = request.EstimatedTotalPrice;
-        shoppingList.ActualTotalPrice = request.ActualTotalPrice;
-        shoppingList.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
-
-        _dbContext.ShoppingListItems.RemoveRange(shoppingList.Items);
-        shoppingList.Items.Clear();
-
-        if (request.Items is not null)
-        {
-            foreach (var item in request.Items)
-            {
-                shoppingList.Items.Add(CreateItemEntity(item));
-            }
-        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -129,23 +106,29 @@ public class ShoppingListService : IShoppingListService
             return false;
         }
 
-        if (shoppingList.CompletedAt is not null)
-        {
-            throw new InvalidOperationException("Die Einkaufsliste wurde bereits abgeschlossen.");
-        }
+        var completedItems = shoppingList.Items
+            .Where(x => x.IsChecked || x.PurchasedQuantity > 0)
+            .ToList();
 
-        shoppingList.CompletedAt = DateTime.UtcNow;
-
-        foreach (var item in shoppingList.Items.Where(x => x.Purchased))
+        foreach (var item in completedItems)
         {
             if (string.IsNullOrWhiteSpace(item.Name))
             {
                 continue;
             }
 
+            var quantityToAdd = item.PurchasedQuantity > 0
+                ? item.PurchasedQuantity
+                : item.Quantity;
+
+            if (quantityToAdd <= 0)
+            {
+                continue;
+            }
+
             var inventoryItem = await _dbContext.InventoryItems
                 .FirstOrDefaultAsync(
-                    x => x.Name.ToLower() == item.Name.ToLower(),
+                    x => x.Name.ToLower() == item.Name.ToLower() && x.Unit == item.Unit,
                     cancellationToken);
 
             if (inventoryItem is null)
@@ -153,8 +136,8 @@ public class ShoppingListService : IShoppingListService
                 inventoryItem = new InventoryItem
                 {
                     Name = item.Name.Trim(),
-                    Quantity = item.Quantity,
-                    Category = "Einkauf",
+                    Quantity = quantityToAdd,
+                    Unit = string.IsNullOrWhiteSpace(item.Unit) ? "Stk" : item.Unit.Trim(),
                     Notes = null
                 };
 
@@ -162,7 +145,7 @@ public class ShoppingListService : IShoppingListService
             }
             else
             {
-                inventoryItem.Quantity += item.Quantity;
+                inventoryItem.Quantity += quantityToAdd;
             }
         }
 
@@ -186,7 +169,7 @@ public class ShoppingListService : IShoppingListService
                 throw new ArgumentException("Für Einkäufe kann nur eine Expense-Kategorie verwendet werden.");
             }
 
-            var totalAmount = shoppingList.ActualTotalPrice ?? shoppingList.EstimatedTotalPrice ?? 0m;
+            var totalAmount = shoppingList.Items.Sum(x => x.ActualTotalPrice ?? x.EstimatedTotalPrice ?? 0m);
 
             if (totalAmount <= 0)
             {
@@ -200,9 +183,7 @@ public class ShoppingListService : IShoppingListService
                     : request.TransactionTitle.Trim(),
                 Amount = -Math.Abs(totalAmount),
                 Date = DateTime.SpecifyKind((request.TransactionDate ?? DateTime.UtcNow).Date, DateTimeKind.Utc),
-                Note = string.IsNullOrWhiteSpace(shoppingList.Store)
-                    ? "Automatisch aus Einkaufsliste erstellt"
-                    : $"Automatisch aus Einkaufsliste erstellt · {shoppingList.Store}",
+                Note = "Automatisch aus Einkaufsliste erstellt",
                 CategoryId = category.Id
             };
 
@@ -221,24 +202,32 @@ public class ShoppingListService : IShoppingListService
         }
     }
 
-    private static ShoppingListItem CreateItemEntity(ShoppingListItemInputDto item)
+    private static ShoppingItem CreateItemEntity(CreateShoppingItemRequest item)
     {
         if (string.IsNullOrWhiteSpace(item.Name))
         {
             throw new ArgumentException("Jeder Einkaufsposten benötigt einen Namen.");
         }
 
-        if (item.Quantity <= 0)
+        if (item.Quantity < 0)
         {
-            throw new ArgumentException("Die Menge eines Einkaufspostens muss größer als 0 sein.");
+            throw new ArgumentException("Die Menge eines Einkaufspostens darf nicht negativ sein.");
         }
 
-        return new ShoppingListItem
+        return new ShoppingItem
         {
             Name = item.Name.Trim(),
+            RequiredQuantity = item.RequiredQuantity,
+            InventoryQuantityUsed = item.InventoryQuantityUsed,
             Quantity = item.Quantity,
-            Unit = string.IsNullOrWhiteSpace(item.Unit) ? null : item.Unit.Trim(),
-            Purchased = item.Purchased
+            PurchasedQuantity = item.PurchasedQuantity,
+            Unit = string.IsNullOrWhiteSpace(item.Unit) ? "Stk" : item.Unit.Trim(),
+            IsChecked = false,
+            EstimatedUnitPrice = item.EstimatedUnitPrice,
+            EstimatedTotalPrice = item.EstimatedTotalPrice,
+            ActualTotalPrice = item.ActualTotalPrice,
+            SourceType = string.IsNullOrWhiteSpace(item.SourceType) ? "Manual" : item.SourceType.Trim(),
+            CatalogItemId = item.CatalogItemId
         };
     }
 
@@ -248,21 +237,41 @@ public class ShoppingListService : IShoppingListService
         {
             Id = x.Id,
             Name = x.Name,
-            Store = x.Store,
-            EstimatedTotalPrice = x.EstimatedTotalPrice,
-            ActualTotalPrice = x.ActualTotalPrice,
-            Notes = x.Notes,
             CreatedAt = x.CreatedAt,
-            CompletedAt = x.CompletedAt,
             Items = x.Items
                 .OrderBy(i => i.Name)
-                .Select(i => new ShoppingListItemDto
+                .Select(i => new ShoppingItemDto
                 {
                     Id = i.Id,
                     Name = i.Name,
+                    RequiredQuantity = i.RequiredQuantity,
+                    InventoryQuantityUsed = i.InventoryQuantityUsed,
                     Quantity = i.Quantity,
+                    PurchasedQuantity = i.PurchasedQuantity,
                     Unit = i.Unit,
-                    Purchased = i.Purchased
+                    IsChecked = i.IsChecked,
+                    EstimatedUnitPrice = i.EstimatedUnitPrice,
+                    EstimatedTotalPrice = i.EstimatedTotalPrice,
+                    ActualTotalPrice = i.ActualTotalPrice,
+                    SourceType = i.SourceType,
+                    CatalogItemId = i.CatalogItemId,
+                    CatalogItemName = i.CatalogItem != null ? i.CatalogItem.Name : null,
+                    PriceOptions = i.PriceOptions
+                        .OrderBy(p => p.TotalPrice)
+                        .Select(p => new ShoppingItemPriceOptionDto
+                        {
+                            Id = p.Id,
+                            StoreName = p.StoreName,
+                            ProductName = p.ProductName,
+                            UnitPrice = p.UnitPrice,
+                            TotalPrice = p.TotalPrice,
+                            ProductUrl = p.ProductUrl,
+                            IsAvailable = p.IsAvailable,
+                            CheckedAt = p.CheckedAt,
+                            ShoppingItemId = p.ShoppingItemId
+                        })
+                        .ToList(),
+                    ShoppingListId = i.ShoppingListId
                 })
                 .ToList()
         };
