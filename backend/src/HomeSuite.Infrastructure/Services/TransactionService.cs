@@ -65,11 +65,14 @@ public class TransactionService : ITransactionService
             throw new InvalidOperationException("Die angegebene Kategorie existiert nicht.");
         }
 
+        var normalizedAmount = NormalizeAmount(request.Amount, category.Type);
+        var normalizedDate = NormalizeDate(request.Date);
+
         var transaction = new Transaction
         {
             Title = request.Title.Trim(),
-            Amount = request.Amount,
-            Date = request.Date,
+            Amount = normalizedAmount,
+            Date = normalizedDate,
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
             CategoryId = request.CategoryId
         };
@@ -111,8 +114,8 @@ public class TransactionService : ITransactionService
         }
 
         transaction.Title = request.Title.Trim();
-        transaction.Amount = request.Amount;
-        transaction.Date = request.Date;
+        transaction.Amount = NormalizeAmount(request.Amount, category.Type);
+        transaction.Date = NormalizeDate(request.Date);
         transaction.Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
         transaction.CategoryId = request.CategoryId;
 
@@ -163,5 +166,22 @@ public class TransactionService : ITransactionService
         {
             throw new ArgumentException("Eine gültige Kategorie ist erforderlich.");
         }
+    }
+
+    private static decimal NormalizeAmount(decimal amount, string categoryType)
+    {
+        var absoluteAmount = Math.Abs(amount);
+
+        return categoryType switch
+        {
+            "Income" => absoluteAmount,
+            "Expense" => -absoluteAmount,
+            _ => amount
+        };
+    }
+
+    private static DateTime NormalizeDate(DateTime date)
+    {
+        return DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
     }
 }

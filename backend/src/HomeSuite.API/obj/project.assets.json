@@ -2796,19 +2796,19 @@
     ]
   },
   "packageFolders": {
-    "/home/jakob/.nuget/packages/": {}
+    "/home/oblivion/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/jakob/homesuite/backend/src/HomeSuite.API/HomeSuite.API.csproj",
+      "projectUniqueName": "/home/oblivion/Documents/Projecrts/homesuite/backend/src/HomeSuite.API/HomeSuite.API.csproj",
       "projectName": "HomeSuite.API",
-      "projectPath": "/home/jakob/homesuite/backend/src/HomeSuite.API/HomeSuite.API.csproj",
-      "packagesPath": "/home/jakob/.nuget/packages/",
-      "outputPath": "/home/jakob/homesuite/backend/src/HomeSuite.API/obj/",
+      "projectPath": "/home/oblivion/Documents/Projecrts/homesuite/backend/src/HomeSuite.API/HomeSuite.API.csproj",
+      "packagesPath": "/home/oblivion/.nuget/packages/",
+      "outputPath": "/home/oblivion/Documents/Projecrts/homesuite/backend/src/HomeSuite.API/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/home/jakob/.nuget/NuGet/NuGet.Config"
+        "/home/oblivion/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
@@ -2820,11 +2820,11 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "projectReferences": {
-            "/home/jakob/homesuite/backend/src/HomeSuite.Application/HomeSuite.Application.csproj": {
-              "projectPath": "/home/jakob/homesuite/backend/src/HomeSuite.Application/HomeSuite.Application.csproj"
+            "/home/oblivion/Documents/Projecrts/homesuite/backend/src/HomeSuite.Application/HomeSuite.Application.csproj": {
+              "projectPath": "/home/oblivion/Documents/Projecrts/homesuite/backend/src/HomeSuite.Application/HomeSuite.Application.csproj"
             },
-            "/home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/HomeSuite.Infrastructure.csproj": {
-              "projectPath": "/home/jakob/homesuite/backend/src/HomeSuite.Infrastructure/HomeSuite.Infrastructure.csproj"
+            "/home/oblivion/Documents/Projecrts/homesuite/backend/src/HomeSuite.Infrastructure/HomeSuite.Infrastructure.csproj": {
+              "projectPath": "/home/oblivion/Documents/Projecrts/homesuite/backend/src/HomeSuite.Infrastructure/HomeSuite.Infrastructure.csproj"
             }
           }
         }
@@ -2878,7 +2878,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/nix/store/16341mr27xkzix0a048jwj9lrzq5bk1c-dotnet-sdk-8.0.419/share/dotnet/sdk/8.0.419/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/nix/store/k7l8qnbyrd46a6dhc039p3qhcvryz41s-dotnet-sdk-8.0.419/share/dotnet/sdk/8.0.419/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

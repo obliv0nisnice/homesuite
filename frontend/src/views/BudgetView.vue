@@ -47,8 +47,9 @@ const newCategory = ref({
 
 const newTransaction = ref({
   title: '',
+  type: 'Expense',
   amount: 0,
-  date: new Date().toISOString().slice(0, 16),
+  date: new Date().toISOString().slice(0, 10),
   note: '',
   categoryId: '',
 })
@@ -137,7 +138,10 @@ async function loadData() {
     transactions.value = loadedTransactions
 
     if (!newTransaction.value.categoryId) {
-      newTransaction.value.categoryId = loadedCategories.find((c) => c.type === 'Expense')?.id ?? loadedCategories[0]?.id ?? ''
+      newTransaction.value.categoryId =
+        loadedCategories.find((c) => c.type === newTransaction.value.type)?.id
+        ?? loadedCategories[0]?.id
+        ?? ''
     }
 
     await nextTick()
@@ -177,17 +181,20 @@ async function addTransaction() {
     await apiFetch<Transaction>('/transactions', {
       method: 'POST',
       body: JSON.stringify({
-        ...newTransaction.value,
+        title: newTransaction.value.title,
         amount: Number(newTransaction.value.amount),
-        date: new Date(newTransaction.value.date).toISOString(),
+        date: newTransaction.value.date,
+        note: newTransaction.value.note,
+        categoryId: newTransaction.value.categoryId,
       }),
     })
 
     showAddModal.value = false
     newTransaction.value = {
       title: '',
+      type: 'Expense',
       amount: 0,
-      date: new Date().toISOString().slice(0, 16),
+      date: new Date().toISOString().slice(0, 10),
       note: '',
       categoryId: categories.value.find((c) => c.type === 'Expense')?.id ?? categories.value[0]?.id ?? '',
     }
@@ -381,6 +388,14 @@ onMounted(async () => {
   })
 })
 
+watch(() => newTransaction.value.type, (type) => {
+  const matchingCategory = categories.value.find((c) => c.type === type)
+
+  if (matchingCategory) {
+    newTransaction.value.categoryId = matchingCategory.id
+  }
+})
+
 watch([transactions, categories], async () => {
   await nextTick()
   renderCharts()
@@ -397,7 +412,7 @@ watch([transactions, categories], async () => {
       <div class="page-actions">
         <button class="btn-secondary" @click="loadData" :disabled="loading">Neu laden</button>
         <button class="btn-add" @click="showAddModal = true">
-          <span>+</span> Ausgabe hinzufügen
+          <span>+</span> Transaktion hinzufügen
         </button>
       </div>
     </div>
@@ -575,7 +590,7 @@ watch([transactions, categories], async () => {
       <div v-if="showAddModal" class="modal-backdrop" @click.self="showAddModal = false">
         <div class="modal-box">
           <div class="modal-header">
-            <h2>Neue Ausgabe</h2>
+            <h2>Neue Transaktion</h2>
             <button class="modal-close" @click="showAddModal = false">✕</button>
           </div>
           <div class="modal-body">
@@ -585,13 +600,20 @@ watch([transactions, categories], async () => {
             </div>
             <div class="form-row">
               <div class="form-group">
+                <label>Typ</label>
+                <select v-model="newTransaction.type" class="form-input">
+                  <option value="Expense">Ausgabe</option>
+                  <option value="Income">Einnahme</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label>Betrag (€)</label>
                 <input v-model.number="newTransaction.amount" class="form-input" type="number" step="0.01" placeholder="0.00" />
               </div>
               <div class="form-group">
                 <label>Kategorie</label>
                 <select v-model="newTransaction.categoryId" class="form-input">
-                  <option v-for="cat in categories.filter((c) => c.type === 'Expense')" :key="cat.id" :value="cat.id">
+                  <option v-for="cat in categories.filter((c) => c.type === newTransaction.type)" :key="cat.id" :value="cat.id">
                     {{ cat.name }}
                   </option>
                 </select>
@@ -599,7 +621,7 @@ watch([transactions, categories], async () => {
             </div>
             <div class="form-group">
               <label>Datum</label>
-              <input v-model="newTransaction.date" class="form-input" type="datetime-local" />
+              <input v-model="newTransaction.date" class="form-input" type="date" />
             </div>
             <div class="form-group">
               <label>Notiz</label>
@@ -1056,7 +1078,7 @@ watch([transactions, categories], async () => {
 
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
 }
 
@@ -1178,4 +1200,3 @@ watch([transactions, categories], async () => {
   }
 }
 </style>
-

@@ -2,6 +2,16 @@
 import { computed, onMounted, ref } from 'vue'
 import { apiFetch } from '@/services/api'
 
+type Category = {
+  id: string
+  name: string
+  type: string
+}
+
+const categories = ref<Category[]>([])
+const completeAsBudgetExpense = ref<Record<string, boolean>>({})
+const selectedExpenseCategoryId = ref<Record<string, string>>({})
+
 type CatalogItem = {
   id: string
   name: string
@@ -129,6 +139,10 @@ const selectedListTotals = computed(() => {
   }
 })
 
+const expenseCategories = computed(() =>
+  categories.value.filter((c) => c.type === 'Expense'),
+)
+
 function formatMoney(value?: number | null) {
   if (value == null) {
     return '—'
@@ -206,13 +220,22 @@ async function loadData() {
   success.value = ''
 
   try {
-    const [loadedCatalogItems, loadedShoppingLists] = await Promise.all([
+    const [loadedCatalogItems, loadedShoppingLists, loadedCategories] = await Promise.all([
       apiFetch<CatalogItem[]>('/catalog'),
       apiFetch<ShoppingList[]>('/shoppinglists'),
+      apiFetch<Category[]>('/categories'),
     ])
 
     catalogItems.value = loadedCatalogItems
     shoppingLists.value = loadedShoppingLists
+    categories.value = loadedCategories
+
+    for (const list of loadedShoppingLists) {
+      if (!selectedExpenseCategoryId.value[list.id]) {
+        selectedExpenseCategoryId.value[list.id] =
+          loadedCategories.find((c) => c.type === 'Expense')?.id ?? ''
+      }
+    }
 
     if (!selectedListId.value && loadedShoppingLists.length > 0) {
       selectedListId.value = loadedShoppingLists[0].id
@@ -301,6 +324,9 @@ async function deleteList(id: string) {
       selectedListId.value = ''
     }
 
+    delete completeAsBudgetExpense.value[id]
+    delete selectedExpenseCategoryId.value[id]
+
     await loadData()
     success.value = 'Einkaufsliste wurde gelöscht.'
   } catch (err) {
@@ -322,28 +348,28 @@ async function createItem() {
     await apiFetch<ShoppingItem>(`/shoppinglists/${selectedListId.value}/items`, {
       method: 'POST',
       body: JSON.stringify({
-  ...newItem.value,
-  requiredQuantity: Number(newItem.value.requiredQuantity),
-  inventoryQuantityUsed: Number(newItem.value.inventoryQuantityUsed),
-  quantity: Number(newItem.value.quantity),
-  purchasedQuantity: Number(newItem.value.purchasedQuantity),
-  estimatedUnitPrice: null,
-  estimatedTotalPrice: null,
-  actualTotalPrice: null,
-  catalogItemId: newItem.value.catalogItemId || null,
-}),
+        ...newItem.value,
+        requiredQuantity: Number(newItem.value.requiredQuantity),
+        inventoryQuantityUsed: Number(newItem.value.inventoryQuantityUsed),
+        quantity: Number(newItem.value.quantity),
+        purchasedQuantity: Number(newItem.value.purchasedQuantity),
+        estimatedUnitPrice: null,
+        estimatedTotalPrice: null,
+        actualTotalPrice: null,
+        catalogItemId: newItem.value.catalogItemId || null,
+      }),
     })
 
     newItem.value = {
-  name: '',
-  requiredQuantity: 1,
-  inventoryQuantityUsed: 0,
-  quantity: 1,
-  purchasedQuantity: 0,
-  unit: 'Stk',
-  sourceType: 'Manual',
-  catalogItemId: '',
-}
+      name: '',
+      requiredQuantity: 1,
+      inventoryQuantityUsed: 0,
+      quantity: 1,
+      purchasedQuantity: 0,
+      unit: 'Stk',
+      sourceType: 'Manual',
+      catalogItemId: '',
+    }
 
     await loadData()
     success.value = 'Artikel wurde erstellt.'
@@ -471,12 +497,31 @@ async function completeShoppingList(id: string) {
   error.value = ''
   success.value = ''
 
+  const createBudgetExpense = completeAsBudgetExpense.value[id] ?? false
+  const expenseCategoryId = selectedExpenseCategoryId.value[id] ?? ''
+
+  if (createBudgetExpense && !expenseCategoryId) {
+    error.value = 'Bitte eine Budget-Kategorie auswählen.'
+    return
+  }
+
+  const list = shoppingLists.value.find((x) => x.id === id)
+
   try {
     await apiFetch(`/shoppinglists/${id}/complete`, {
       method: 'POST',
+      body: JSON.stringify({
+        createBudgetExpense,
+        expenseCategoryId: createBudgetExpense ? expenseCategoryId : null,
+        transactionTitle: list ? `Einkauf · ${list.name}` : 'Einkauf',
+        transactionDate: new Date().toISOString().slice(0, 10),
+      }),
     })
 
-    success.value = 'Einkauf wurde mit den tatsächlich gekauften Mengen ins Inventar übernommen.'
+    success.value = createBudgetExpense
+      ? 'Einkauf wurde ins Inventar übernommen und zusätzlich als Budget-Ausgabe gespeichert.'
+      : 'Einkauf wurde mit den tatsächlich gekauften Mengen ins Inventar übernommen.'
+
     await loadData()
   } catch (err) {
     console.error(err)
@@ -615,7 +660,6 @@ async function deletePriceOption(item: ShoppingItem, priceOptionId: string) {
 onMounted(loadData)
 </script>
 
-
 <template>
   <div class="dashboard-page">
     <div class="page-header">
@@ -700,36 +744,59 @@ onMounted(loadData)
                 <th>Artikel</th>
                 <th>Geschätzt</th>
                 <th>Tatsächlich</th>
+                <th>Budget</th>
                 <th>Aktionen</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="list in shoppingLists" :key="list.id" :class="{ selected: selectedListId === list.id }">
-                <template v-if="editListId === list.id">
-                  <td><input v-model="editList.name" type="text" /></td>
-                  <td>{{ new Date(list.createdAt).toLocaleString() }}</td>
-                  <td>{{ list.items.length }}</td>
-                  <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</td>
-                  <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</td>
-                  <td class="actions">
-                    <button class="btn-save" @click="updateList(list.id)">Speichern</button>
-                    <button class="btn-secondary" @click="cancelEditList">Abbrechen</button>
-                  </td>
-                </template>
-                <template v-else>
-                  <td class="clickable" @click="selectedListId = list.id"><strong>{{ list.name }}</strong></td>
-                  <td>{{ new Date(list.createdAt).toLocaleString() }}</td>
-                  <td>{{ list.items.length }}</td>
-                  <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</td>
-                  <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</td>
-                  <td class="actions">
-                    <button class="btn-secondary" @click="selectedListId = list.id">Öffnen</button>
-                    <button class="btn-secondary" @click="startEditList(list)">Bearbeiten</button>
-                    <button class="btn-danger" @click="deleteList(list.id)">Löschen</button>
-                    <button class="btn-add" @click="completeShoppingList(list.id)">Abschließen</button>
-                  </td>
-                </template>
-              </tr>
+              <template v-for="list in shoppingLists" :key="list.id">
+                <tr :class="{ selected: selectedListId === list.id }">
+                  <template v-if="editListId === list.id">
+                    <td><input v-model="editList.name" type="text" /></td>
+                    <td>{{ new Date(list.createdAt).toLocaleString() }}</td>
+                    <td>{{ list.items.length }}</td>
+                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</td>
+                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</td>
+                    <td>—</td>
+                    <td class="actions">
+                      <button class="btn-save" @click="updateList(list.id)">Speichern</button>
+                      <button class="btn-secondary" @click="cancelEditList">Abbrechen</button>
+                    </td>
+                  </template>
+                  <template v-else>
+                    <td class="clickable" @click="selectedListId = list.id"><strong>{{ list.name }}</strong></td>
+                    <td>{{ new Date(list.createdAt).toLocaleString() }}</td>
+                    <td>{{ list.items.length }}</td>
+                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</td>
+                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</td>
+                    <td>
+                      <div class="complete-budget-box">
+                        <label class="checkbox-row">
+                          <input v-model="completeAsBudgetExpense[list.id]" type="checkbox" />
+                          <span>Als Budget-Ausgabe speichern</span>
+                        </label>
+
+                        <select
+                          v-if="completeAsBudgetExpense[list.id]"
+                          v-model="selectedExpenseCategoryId[list.id]"
+                          class="budget-category-select"
+                        >
+                          <option value="">Budget-Kategorie wählen</option>
+                          <option v-for="category in expenseCategories" :key="category.id" :value="category.id">
+                            {{ category.name }}
+                          </option>
+                        </select>
+                      </div>
+                    </td>
+                    <td class="actions">
+                      <button class="btn-secondary" @click="selectedListId = list.id">Öffnen</button>
+                      <button class="btn-secondary" @click="startEditList(list)">Bearbeiten</button>
+                      <button class="btn-danger" @click="deleteList(list.id)">Löschen</button>
+                      <button class="btn-add" @click="completeShoppingList(list.id)">Abschließen</button>
+                    </td>
+                  </template>
+                </tr>
+              </template>
             </tbody>
           </table>
 
@@ -917,7 +984,6 @@ onMounted(loadData)
 </template>
 
 <style scoped>
-
 .dashboard-page {
   max-width: 1200px;
   margin: 0 auto;
@@ -1420,5 +1486,16 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
+}
+
+.complete-budget-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.budget-category-select {
+  min-width: 220px;
 }
 </style>
