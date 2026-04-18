@@ -21,6 +21,7 @@ type Transaction = {
   categoryType: string
   isRecurring?: boolean
   recurringInterval?: 'monthly' | 'weekly' | 'yearly' | null
+  nextDueDate?: string | null
 }
 
 type CategorySummary = {
@@ -48,6 +49,8 @@ const error = ref('')
 const success = ref('')
 const showAddModal = ref(false)
 const deletingId = ref<string | null>(null)
+const stoppingRecurringId = ref<string | null>(null)
+const deletingCategoryId = ref<string | null>(null)
 
 const newCategory = ref({ name: '', type: 'Expense' })
 
@@ -271,6 +274,54 @@ async function deleteTransaction(id: string) {
     error.value = 'Transaktion konnte nicht gelöscht werden.'
   } finally {
     deletingId.value = null
+  }
+}
+
+async function stopRecurring(tx: Transaction) {
+  if (!confirm(`Wiederholung für „${tx.title}" wirklich stoppen?`)) return
+  stoppingRecurringId.value = tx.id
+  error.value = ''
+  try {
+    await apiFetch(`/transactions/${tx.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        title: tx.title,
+        amount: tx.amount,
+        date: tx.date,
+        note: tx.note,
+        categoryId: tx.categoryId,
+        isRecurring: false,
+        recurringInterval: null,
+      }),
+    })
+    // Update local state immediately
+    const local = transactions.value.find((t) => t.id === tx.id)
+    if (local) {
+      local.isRecurring = false
+      local.recurringInterval = null
+    }
+    success.value = `Wiederholung für „${tx.title}" gestoppt.`
+  } catch {
+    error.value = 'Wiederholung konnte nicht gestoppt werden.'
+  } finally {
+    stoppingRecurringId.value = null
+  }
+}
+
+async function deleteCategory(id: string, name: string) {
+  if (!confirm(`Kategorie „${name}" wirklich löschen?\nAchtung: Transaktionen dieser Kategorie bleiben erhalten.`)) return
+  deletingCategoryId.value = id
+  error.value = ''
+  try {
+    await apiFetch(`/categories/${id}`, { method: 'DELETE' })
+    categories.value = categories.value.filter((c) => c.id !== id)
+    success.value = `Kategorie „${name}" gelöscht.`
+    await nextTick()
+    renderCharts()
+  } catch {
+    error.value = 'Kategorie konnte nicht gelöscht werden. Möglicherweise sind noch Transaktionen verknüpft.'
+  } finally {
+    deletingCategoryId.value = null
   }
 }
 
@@ -681,14 +732,15 @@ watch([transactions, categories], async () => {
         <span class="chart-badge">{{ recurringTransactions.length }} aktiv</span>
       </div>
       <div class="trans-table">
-        <div class="trans-row header-row">
+        <div class="trans-row recurring-header-row">
           <span>Beschreibung</span>
           <span>Kategorie</span>
           <span>Intervall</span>
+          <span>Nächste Ausführung</span>
           <span class="text-right">Betrag</span>
           <span></span>
         </div>
-        <div v-for="tx in recurringTransactions" :key="'r-' + tx.id" class="trans-row">
+        <div v-for="tx in recurringTransactions" :key="'r-' + tx.id" class="trans-row recurring-row">
           <span class="trans-desc">{{ tx.title }}</span>
           <span class="trans-cat">
             <span
@@ -700,10 +752,19 @@ watch([transactions, categories], async () => {
             >{{ tx.categoryName || '—' }}</span>
           </span>
           <span class="interval-chip">{{ intervalLabel(tx.recurringInterval) }}</span>
+          <span class="next-due-date">
+            {{ tx.nextDueDate ? formatDate(tx.nextDueDate) : '—' }}
+          </span>
           <span class="trans-amount" :class="tx.categoryType === 'Income' ? 'amount-pos' : 'amount-neg'">
             {{ tx.categoryType === 'Income' ? '+' : '-' }}€{{ Math.abs(tx.amount).toFixed(2) }}
           </span>
           <span class="trans-actions">
+            <button
+              class="btn-stop-recurring"
+              @click="stopRecurring(tx)"
+              :disabled="stoppingRecurringId === tx.id"
+              title="Wiederholung stoppen"
+            >{{ stoppingRecurringId === tx.id ? '…' : '⏹' }}</button>
             <button
               class="btn-delete"
               @click="deleteTransaction(tx.id)"
@@ -744,10 +805,18 @@ watch([transactions, categories], async () => {
         </div>
         <div class="category-list">
           <div v-for="category in categories" :key="category.id" class="category-row">
-            <span>{{ category.name }}</span>
-            <span class="cat-chip small-chip" :class="category.type === 'Income' ? 'chip-income' : 'chip-expense'">
-              {{ category.type === 'Income' ? 'Einnahme' : 'Ausgabe' }}
-            </span>
+            <span class="category-name">{{ category.name }}</span>
+            <div class="category-row-actions">
+              <span class="cat-chip small-chip" :class="category.type === 'Income' ? 'chip-income' : 'chip-expense'">
+                {{ category.type === 'Income' ? 'Einnahme' : 'Ausgabe' }}
+              </span>
+              <button
+                class="btn-delete"
+                @click="deleteCategory(category.id, category.name)"
+                :disabled="deletingCategoryId === category.id"
+                title="Kategorie löschen"
+              >{{ deletingCategoryId === category.id ? '…' : '✕' }}</button>
+            </div>
           </div>
           <div v-if="categories.length === 0" class="empty-state">Noch keine Kategorien.</div>
         </div>
@@ -1316,6 +1385,55 @@ watch([transactions, categories], async () => {
   font-size: 12px;
   color: var(--primary);
   font-weight: 600;
+}
+
+.next-due-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.recurring-header-row {
+  grid-template-columns: 1fr 120px 100px 120px 100px 72px !important;
+}
+
+.recurring-row {
+  grid-template-columns: 1fr 120px 100px 120px 100px 72px !important;
+}
+
+.btn-stop-recurring {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.btn-stop-recurring:hover {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.btn-stop-recurring:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.category-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-state {
