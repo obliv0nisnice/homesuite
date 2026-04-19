@@ -1742,3 +1742,4 @@ watch([transactions, categories], async () => {
   .interval-options { flex-direction: column; }
 }
 </style>
+
