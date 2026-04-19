@@ -453,9 +453,13 @@ function formatSelectedDate(value: string) {
 }
 
 function formatTimeRange(start?: string | null, end?: string | null) {
-  if (!start && !end) return 'Ganztägig'
-  if (start && end) return `${start} – ${end}`
-  return start || end || 'Ganztägig'
+  const formatTime = (value?: string | null) => value ? value.slice(0, 5) : ''
+  const formattedStart = formatTime(start)
+  const formattedEnd = formatTime(end)
+
+  if (!formattedStart && !formattedEnd) return 'Ganztägig'
+  if (formattedStart && formattedEnd) return `${formattedStart} – ${formattedEnd}`
+  return formattedStart || formattedEnd || 'Ganztägig'
 }
 
 function getEventsForDay(isoDate: string) {
@@ -560,6 +564,10 @@ function addOneHour(value: string) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
+function toBackendTimeValue(value: string) {
+  return value ? `${value}:00` : null
+}
+
 function resetEventForm() {
   eventForm.value = {
     title: '',
@@ -660,20 +668,25 @@ async function createEvent() {
     currentDate = nextDate
   }
 
-  await Promise.all(
-    dates.map((date) =>
-      apiFetch('/CalendarEvents', {
-        method: 'POST',
-        body: JSON.stringify({
-          date,
-          title,
-          startTime: startTime || null,
-          endTime: endTime || null,
-          notes: eventForm.value.notes.trim() || null,
+  try {
+    await Promise.all(
+      dates.map((date) =>
+        apiFetch('/CalendarEvents', {
+          method: 'POST',
+          body: JSON.stringify({
+            date,
+            title,
+            startTime: toBackendTimeValue(startTime || ''),
+            endTime: toBackendTimeValue(endTime || ''),
+            notes: eventForm.value.notes.trim() || null,
+          }),
         }),
-      }),
-    ),
-  )
+      ),
+    )
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Termin konnte nicht gespeichert werden.'
+    return
+  }
 
   showEventModal.value = false
   success.value = dates.length === 1 ? 'Termin gespeichert.' : `${dates.length} Termine gespeichert.`
@@ -684,7 +697,12 @@ async function createEvent() {
 async function deleteEvent(id: string) {
   error.value = ''
   success.value = ''
-  await apiFetch(`/CalendarEvents/${id}`, { method: 'DELETE' })
+  try {
+    await apiFetch(`/CalendarEvents/${id}`, { method: 'DELETE' })
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Termin konnte nicht gelöscht werden.'
+    return
+  }
   success.value = 'Termin gelöscht.'
   await loadMonthData()
 }
