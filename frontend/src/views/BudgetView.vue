@@ -1222,3 +1222,4 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
   .recurring-item-right { width: 100%; justify-content: space-between; }
 }
 </style>
+
