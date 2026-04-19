@@ -39,6 +39,26 @@ public class CalendarEventsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("imported")]
+    public async Task<ActionResult<List<CalendarSubscriptionPreviewDto>>> ImportSubscriptions(
+        [FromBody] ImportCalendarSubscriptionsRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _calendarEventService.ImportSubscriptionsAsync(request, cancellationToken);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            return BadRequest(new { message = $"Kalender-URL konnte nicht geladen werden: {ex.Message}" });
+        }
+    }
+
     [HttpPost]
     public async Task<ActionResult<CalendarEventDto>> Create(
         [FromBody] CreateCalendarEventRequest request,
