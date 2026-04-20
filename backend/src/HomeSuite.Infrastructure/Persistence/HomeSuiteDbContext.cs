@@ -22,6 +22,7 @@ public class HomeSuiteDbContext : DbContext
     public DbSet<CatalogItemPrice> CatalogItemPrices => Set<CatalogItemPrice>();
     public DbSet<ShoppingItemPriceOption> ShoppingItemPriceOptions => Set<ShoppingItemPriceOption>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<CalendarSubscription> CalendarSubscriptions => Set<CalendarSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +34,14 @@ public class HomeSuiteDbContext : DbContext
             entity.Property(x => x.Date).IsRequired();
             entity.Property(x => x.Title).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Notes).HasMaxLength(2000);
+        });
+
+        modelBuilder.Entity<CalendarSubscription>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Url).HasMaxLength(2000).IsRequired();
+            entity.Property(x => x.CreatedAt).IsRequired();
+            entity.HasIndex(x => x.Url).IsUnique();
         });
 
         modelBuilder.Entity<Category>(entity =>

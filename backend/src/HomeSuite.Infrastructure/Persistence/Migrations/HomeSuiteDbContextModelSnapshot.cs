@@ -51,6 +51,28 @@ namespace HomeSuite.Infrastructure.Persistence.Migrations
                     b.ToTable("CalendarEvents");
                 });
 
+            modelBuilder.Entity("HomeSuite.Domain.Entities.CalendarSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Url")
+                        .IsUnique();
+
+                    b.ToTable("CalendarSubscriptions");
+                });
+
             modelBuilder.Entity("HomeSuite.Domain.Entities.CatalogItem", b =>
                 {
                     b.Property<Guid>("Id")

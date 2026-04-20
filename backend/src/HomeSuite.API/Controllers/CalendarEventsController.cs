@@ -39,6 +39,42 @@ public class CalendarEventsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("subscriptions")]
+    public async Task<ActionResult<List<CalendarSubscriptionDto>>> GetSubscriptions(CancellationToken cancellationToken)
+    {
+        var result = await _calendarEventService.GetSubscriptionsAsync(cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("subscriptions")]
+    public async Task<ActionResult<CalendarSubscriptionDto>> CreateSubscription(
+        [FromBody] CreateCalendarSubscriptionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var created = await _calendarEventService.CreateSubscriptionAsync(request, cancellationToken);
+            return Ok(created);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("subscriptions/{id:guid}")]
+    public async Task<ActionResult> DeleteSubscription(Guid id, CancellationToken cancellationToken)
+    {
+        var deleted = await _calendarEventService.DeleteSubscriptionAsync(id, cancellationToken);
+
+        if (!deleted)
+        {
+            return NotFound(new { message = "Kalender-Abo nicht gefunden." });
+        }
+
+        return NoContent();
+    }
+
     [HttpPost("imported")]
     public async Task<ActionResult<List<CalendarSubscriptionPreviewDto>>> ImportSubscriptions(
         [FromBody] ImportCalendarSubscriptionsRequest request,

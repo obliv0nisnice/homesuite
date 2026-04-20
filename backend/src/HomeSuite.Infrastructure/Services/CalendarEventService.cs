@@ -42,6 +42,72 @@ public class CalendarEventService : ICalendarEventService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<List<CalendarSubscriptionDto>> GetSubscriptionsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.CalendarSubscriptions
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => new CalendarSubscriptionDto
+            {
+                Id = x.Id,
+                Url = x.Url,
+                CreatedAt = x.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<CalendarSubscriptionDto> CreateSubscriptionAsync(
+        CreateCalendarSubscriptionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedUrl = NormalizeSubscriptionUrl(request.Url);
+
+        var existing = await _dbContext.CalendarSubscriptions
+            .FirstOrDefaultAsync(
+                x => x.Url.ToLower() == normalizedUrl.ToLower(),
+                cancellationToken);
+
+        if (existing is not null)
+        {
+            return new CalendarSubscriptionDto
+            {
+                Id = existing.Id,
+                Url = existing.Url,
+                CreatedAt = existing.CreatedAt
+            };
+        }
+
+        var entity = new CalendarSubscription
+        {
+            Url = normalizedUrl
+        };
+
+        _dbContext.CalendarSubscriptions.Add(entity);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new CalendarSubscriptionDto
+        {
+            Id = entity.Id,
+            Url = entity.Url,
+            CreatedAt = entity.CreatedAt
+        };
+    }
+
+    public async Task<bool> DeleteSubscriptionAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var entity = await _dbContext.CalendarSubscriptions
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+        if (entity is null)
+        {
+            return false;
+        }
+
+        _dbContext.CalendarSubscriptions.Remove(entity);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
+
     public async Task<List<CalendarSubscriptionPreviewDto>> ImportSubscriptionsAsync(
         ImportCalendarSubscriptionsRequest request,
         CancellationToken cancellationToken = default)
@@ -57,7 +123,7 @@ public class CalendarEventService : ICalendarEventService
 
         var urls = request.Urls
             .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Select(url => url.Trim())
+            .Select(NormalizeSubscriptionUrl)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -382,4 +448,21 @@ public class CalendarEventService : ICalendarEventService
             .Replace("\\,", ",", StringComparison.Ordinal)
             .Replace("\\;", ";", StringComparison.Ordinal)
             .Replace("\\\\", "\\", StringComparison.Ordinal);
+
+    private static string NormalizeSubscriptionUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new ArgumentException("Bitte eine Kalender-URL eingeben.");
+        }
+
+        var normalizedUrl = url.Trim();
+        if (!Uri.TryCreate(normalizedUrl, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException($"Ungültige Kalender-URL: {url}");
+        }
+
+        return normalizedUrl;
+    }
 }

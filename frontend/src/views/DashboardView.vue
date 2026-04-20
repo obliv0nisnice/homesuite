@@ -258,7 +258,7 @@
           </div>
 
           <div class="modal-body">
-            <p class="modal-hint">ICS- oder Kalender-Feed-URL hinterlegen. Die Termine werden im Dashboard eingeblendet, aber nicht lokal gespeichert.</p>
+            <p class="modal-hint">ICS- oder Kalender-Feed-URL hinterlegen. Die Abos werden im Backend gespeichert und im Dashboard eingeblendet.</p>
 
             <div class="form-row subscription-add-row">
               <div class="form-group subscription-url-group">
@@ -273,11 +273,11 @@
 
             <div v-if="calendarSubscriptions.length === 0" class="empty-state">Noch keine Kalender-Abos hinterlegt.</div>
             <div v-else class="item-list">
-              <div v-for="url in calendarSubscriptions" :key="url" class="item-card">
+              <div v-for="subscription in calendarSubscriptions" :key="subscription.id" class="item-card">
                 <div class="item-main">
-                  <strong>{{ url }}</strong>
+                  <strong>{{ subscription.url }}</strong>
                 </div>
-                <button class="btn-delete" @click="removeSubscription(url)">Entfernen</button>
+                <button class="btn-delete" @click="removeSubscription(subscription.id)">Entfernen</button>
               </div>
             </div>
           </div>
@@ -313,6 +313,12 @@ type CalendarSubscriptionPreview = {
   events: CalendarEvent[]
 }
 
+type CalendarSubscription = {
+  id: string
+  url: string
+  createdAt: string
+}
+
 type MealPlan = {
   id: string
   date: string
@@ -344,7 +350,7 @@ const showSubscriptionModal = ref(false)
 const error = ref('')
 const success = ref('')
 const subscriptionUrl = ref('')
-const calendarSubscriptions = ref<string[]>([])
+const calendarSubscriptions = ref<CalendarSubscription[]>([])
 
 const eventForm = ref({
   title: '',
@@ -432,7 +438,10 @@ function formatIsoDate(date: Date) {
 
 function parseIsoDate(value: string) {
   if (!isIsoDate(value)) return null
-  const [year, month, day] = value.split('-').map(Number)
+  const parts = value.split('-').map(Number)
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null
+
+  const [year, month, day] = parts as [number, number, number]
   return new Date(year, month - 1, day)
 }
 
@@ -470,28 +479,11 @@ function getMealsForDay(isoDate: string) {
   return mealPlans.value.filter(x => x.date === isoDate)
 }
 
-function loadCalendarSubscriptions() {
-  try {
-    const raw = localStorage.getItem('calendarSubscriptions')
-    if (!raw) {
-      calendarSubscriptions.value = []
-      return
-    }
-
-    const parsed = JSON.parse(raw)
-    calendarSubscriptions.value = Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      : []
-  } catch {
-    calendarSubscriptions.value = []
-  }
+async function loadCalendarSubscriptions() {
+  calendarSubscriptions.value = await apiFetch<CalendarSubscription[]>('/CalendarEvents/subscriptions')
 }
 
-function persistCalendarSubscriptions() {
-  localStorage.setItem('calendarSubscriptions', JSON.stringify(calendarSubscriptions.value))
-}
-
-function addSubscription() {
+async function addSubscription() {
   const url = subscriptionUrl.value.trim()
   if (!url) {
     error.value = 'Bitte eine Kalender-URL eingeben.'
@@ -511,21 +503,36 @@ function addSubscription() {
   error.value = ''
   success.value = ''
 
-  if (!calendarSubscriptions.value.includes(url)) {
-    calendarSubscriptions.value = [...calendarSubscriptions.value, url]
-    persistCalendarSubscriptions()
+  try {
+    await apiFetch<CalendarSubscription>('/CalendarEvents/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    })
+    await loadCalendarSubscriptions()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht gespeichert werden.'
+    return
   }
 
   subscriptionUrl.value = ''
   success.value = 'Kalender-Abo gespeichert.'
-  void loadMonthData()
+  await loadMonthData()
 }
 
-function removeSubscription(url: string) {
-  calendarSubscriptions.value = calendarSubscriptions.value.filter((entry) => entry !== url)
-  persistCalendarSubscriptions()
+async function removeSubscription(id: string) {
+  error.value = ''
+  success.value = ''
+
+  try {
+    await apiFetch(`/CalendarEvents/subscriptions/${id}`, { method: 'DELETE' })
+    await loadCalendarSubscriptions()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht entfernt werden.'
+    return
+  }
+
   success.value = 'Kalender-Abo entfernt.'
-  void loadMonthData()
+  await loadMonthData()
 }
 
 function isIsoDate(value: string) {
@@ -550,7 +557,10 @@ function normalizeTimeValue(value: string) {
 }
 
 function toMinutes(value: string) {
-  const [hours, minutes] = value.split(':').map(Number)
+  const parts = value.split(':').map(Number)
+  if (parts.length !== 2 || parts.some(Number.isNaN)) return 0
+
+  const [hours, minutes] = parts as [number, number]
   return hours * 60 + minutes
 }
 
@@ -588,7 +598,7 @@ function openEventModal() {
 }
 
 async function loadMonthData() {
-  const subscriptions = calendarSubscriptions.value
+  const subscriptions = calendarSubscriptions.value.map((subscription) => subscription.url)
   const [eventData, mealData] = await Promise.all([
     apiFetch<CalendarEvent[]>(`/CalendarEvents?year=${currentYear.value}&month=${currentMonth.value}`),
     apiFetch<MealPlan[]>(`/MealPlans/month?year=${currentYear.value}&month=${currentMonth.value}`),
@@ -801,9 +811,9 @@ watch(() => eventForm.value.isAllDay, (isAllDay) => {
 })
 
 onMounted(async () => {
-  loadCalendarSubscriptions()
   resetEventForm()
-  await Promise.all([loadMonthData(), loadRecipes()])
+  await Promise.all([loadCalendarSubscriptions(), loadRecipes()])
+  await loadMonthData()
 })
 </script>
 
