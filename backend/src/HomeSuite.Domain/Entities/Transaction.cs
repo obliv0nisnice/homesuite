@@ -13,6 +13,6 @@ public class Transaction
 
     // Recurring
     public bool IsRecurring { get; set; } = false;
-    public string? RecurringInterval { get; set; }  // "weekly" | "monthly" | "yearly"
+    public string? RecurringInterval { get; set; }  // "weekly" | "monthly" | "quarterly" | "yearly"
     public DateTime? NextDueDate { get; set; }       // wann die nächste Instanz fällig ist
 }

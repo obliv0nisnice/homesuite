@@ -29,7 +29,10 @@ public class TransactionService : ITransactionService
                 Note = x.Note,
                 CategoryId = x.CategoryId,
                 CategoryName = x.Category != null ? x.Category.Name : string.Empty,
-                CategoryType = x.Category != null ? x.Category.Type : string.Empty
+                CategoryType = x.Category != null ? x.Category.Type : string.Empty,
+                IsRecurring = x.IsRecurring,
+                RecurringInterval = x.RecurringInterval,
+                NextDueDate = x.NextDueDate
             })
             .ToListAsync(cancellationToken);
     }
@@ -48,7 +51,10 @@ public class TransactionService : ITransactionService
                 Note = x.Note,
                 CategoryId = x.CategoryId,
                 CategoryName = x.Category != null ? x.Category.Name : string.Empty,
-                CategoryType = x.Category != null ? x.Category.Type : string.Empty
+                CategoryType = x.Category != null ? x.Category.Type : string.Empty,
+                IsRecurring = x.IsRecurring,
+                RecurringInterval = x.RecurringInterval,
+                NextDueDate = x.NextDueDate
             })
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -67,6 +73,7 @@ public class TransactionService : ITransactionService
 
         var normalizedAmount = NormalizeAmount(request.Amount, category.Type);
         var normalizedDate = NormalizeDate(request.Date);
+        var recurringInterval = NormalizeRecurringInterval(request.IsRecurring, request.RecurringInterval);
 
         var transaction = new Transaction
         {
@@ -74,7 +81,10 @@ public class TransactionService : ITransactionService
             Amount = normalizedAmount,
             Date = normalizedDate,
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
-            CategoryId = request.CategoryId
+            CategoryId = request.CategoryId,
+            IsRecurring = request.IsRecurring,
+            RecurringInterval = recurringInterval,
+            NextDueDate = CalculateFirstNextDueDate(normalizedDate, recurringInterval)
         };
 
         _dbContext.Transactions.Add(transaction);
@@ -89,7 +99,10 @@ public class TransactionService : ITransactionService
             Note = transaction.Note,
             CategoryId = transaction.CategoryId,
             CategoryName = category.Name,
-            CategoryType = category.Type
+            CategoryType = category.Type,
+            IsRecurring = transaction.IsRecurring,
+            RecurringInterval = transaction.RecurringInterval,
+            NextDueDate = transaction.NextDueDate
         };
     }
 
@@ -118,6 +131,9 @@ public class TransactionService : ITransactionService
         transaction.Date = NormalizeDate(request.Date);
         transaction.Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
         transaction.CategoryId = request.CategoryId;
+        transaction.IsRecurring = request.IsRecurring;
+        transaction.RecurringInterval = NormalizeRecurringInterval(request.IsRecurring, request.RecurringInterval);
+        transaction.NextDueDate = CalculateFirstNextDueDate(transaction.Date, transaction.RecurringInterval);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -130,7 +146,10 @@ public class TransactionService : ITransactionService
             Note = transaction.Note,
             CategoryId = transaction.CategoryId,
             CategoryName = category.Name,
-            CategoryType = category.Type
+            CategoryType = category.Type,
+            IsRecurring = transaction.IsRecurring,
+            RecurringInterval = transaction.RecurringInterval,
+            NextDueDate = transaction.NextDueDate
         };
     }
 
@@ -184,4 +203,32 @@ public class TransactionService : ITransactionService
     {
         return DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
     }
+
+    private static string? NormalizeRecurringInterval(bool isRecurring, string? interval)
+    {
+        if (!isRecurring)
+        {
+            return null;
+        }
+
+        return interval?.Trim().ToLowerInvariant() switch
+        {
+            "weekly" => "weekly",
+            "monthly" => "monthly",
+            "quarterly" => "quarterly",
+            "yearly" => "yearly",
+            null or "" => "monthly",
+            _ => throw new ArgumentException("Ungültiges Wiederholungsintervall.")
+        };
+    }
+
+    private static DateTime? CalculateFirstNextDueDate(DateTime startDate, string? interval) =>
+        interval switch
+        {
+            "weekly" => startDate.AddDays(7),
+            "quarterly" => startDate.AddMonths(3),
+            "yearly" => startDate.AddYears(1),
+            "monthly" => startDate.AddMonths(1),
+            _ => null
+        };
 }

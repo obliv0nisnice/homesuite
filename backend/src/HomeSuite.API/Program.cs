@@ -23,6 +23,12 @@ builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<ICatalogPriceCrawlerService, CatalogPriceCrawlerService>();
 builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
 builder.Services.AddHostedService<RecurringTransactionWorker>();
+builder.Services.AddHttpClient("CalendarSubscriptions", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.Accept.ParseAdd("text/calendar,text/plain,application/octet-stream;q=0.9,*/*;q=0.8");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("HomeSuiteCalendar/1.0");
+});
 
 builder.Services.AddHttpClient<SparPriceCrawlerSource>(client =>
 {

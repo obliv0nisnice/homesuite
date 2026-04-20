@@ -7,6 +7,7 @@
       </div>
 
       <div class="header-actions">
+        <button class="btn-secondary" @click="showSubscriptionModal = true">Kalender-Abos</button>
         <button class="btn-secondary" @click="goToPreviousMonth">←</button>
         <button class="btn-secondary" @click="goToToday">Heute</button>
         <button class="btn-secondary" @click="goToNextMonth">→</button>
@@ -51,6 +52,9 @@
       </div>
     </div>
 
+    <div v-if="error" class="alert alert-error">⚠ {{ error }}</div>
+    <div v-if="success" class="alert alert-success">✓ {{ success }}</div>
+
     <div class="dashboard-grid">
       <div class="calendar-card">
         <div class="chart-header">
@@ -93,7 +97,7 @@
           <div class="chart-header">
             <span class="chart-title">Tag · {{ formatSelectedDate(selectedDate) }}</span>
             <div class="panel-actions">
-              <button class="btn-add-small" @click="showEventModal = true">+ Termin</button>
+              <button class="btn-add-small" @click="openEventModal">+ Termin</button>
               <button class="btn-add-small" @click="showMealModal = true">+ Meal</button>
             </div>
           </div>
@@ -109,8 +113,11 @@
                     {{ formatTimeRange(event.startTime, event.endTime) }}
                   </span>
                 </div>
+                <div v-if="event.isImported" class="subscription-chip">
+                  📡 {{ event.sourceName || 'Kalender-Abo' }}
+                </div>
                 <div v-if="event.notes" class="item-notes">{{ event.notes }}</div>
-                <button class="btn-delete" @click="deleteEvent(event.id)">Löschen</button>
+                <button v-if="!event.isImported" class="btn-delete" @click="deleteEvent(event.id)">Löschen</button>
               </div>
             </div>
           </div>
@@ -151,13 +158,30 @@
 
             <div class="form-row">
               <div class="form-group">
+                <label>Von</label>
+                <input v-model="eventForm.startDate" class="form-input" type="date" />
+              </div>
+
+              <div class="form-group">
+                <label>Bis</label>
+                <input v-model="eventForm.endDate" class="form-input" type="date" />
+              </div>
+            </div>
+
+            <label class="toggle-row">
+              <span>Ganztägig</span>
+              <input v-model="eventForm.isAllDay" type="checkbox" />
+            </label>
+
+            <div v-if="!eventForm.isAllDay" class="form-row">
+              <div class="form-group">
                 <label>Start</label>
-                <input v-model="eventForm.startTime" class="form-input" type="time" />
+                <input v-model="eventForm.startTime" class="form-input" type="time" step="60" />
               </div>
 
               <div class="form-group">
                 <label>Ende</label>
-                <input v-model="eventForm.endTime" class="form-input" type="time" />
+                <input v-model="eventForm.endTime" class="form-input" type="time" step="60" />
               </div>
             </div>
 
@@ -224,6 +248,46 @@
         </div>
       </div>
     </Teleport>
+
+    <Teleport to="body">
+      <div v-if="showSubscriptionModal" class="modal-backdrop" @click.self="showSubscriptionModal = false">
+        <div class="modal-box">
+          <div class="modal-header">
+            <h2>Kalender-Abos</h2>
+            <button class="modal-close" @click="showSubscriptionModal = false">✕</button>
+          </div>
+
+          <div class="modal-body">
+            <p class="modal-hint">ICS- oder Kalender-Feed-URL hinterlegen. Die Termine werden im Dashboard eingeblendet, aber nicht lokal gespeichert.</p>
+
+            <div class="form-row subscription-add-row">
+              <div class="form-group subscription-url-group">
+                <label>Kalender-URL</label>
+                <input v-model="subscriptionUrl" class="form-input" type="url" placeholder="https://…" />
+              </div>
+              <div class="form-group subscription-action-group">
+                <label>&nbsp;</label>
+                <button class="btn-save" @click="addSubscription">Hinzufügen</button>
+              </div>
+            </div>
+
+            <div v-if="calendarSubscriptions.length === 0" class="empty-state">Noch keine Kalender-Abos hinterlegt.</div>
+            <div v-else class="item-list">
+              <div v-for="url in calendarSubscriptions" :key="url" class="item-card">
+                <div class="item-main">
+                  <strong>{{ url }}</strong>
+                </div>
+                <button class="btn-delete" @click="removeSubscription(url)">Entfernen</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn-cancel" @click="showSubscriptionModal = false">Schließen</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -238,6 +302,15 @@ type CalendarEvent = {
   startTime?: string | null
   endTime?: string | null
   notes?: string | null
+  isImported?: boolean
+  sourceName?: string | null
+  sourceUrl?: string | null
+}
+
+type CalendarSubscriptionPreview = {
+  url: string
+  calendarName?: string | null
+  events: CalendarEvent[]
 }
 
 type MealPlan = {
@@ -267,11 +340,19 @@ const recipes = ref<Recipe[]>([])
 
 const showEventModal = ref(false)
 const showMealModal = ref(false)
+const showSubscriptionModal = ref(false)
+const error = ref('')
+const success = ref('')
+const subscriptionUrl = ref('')
+const calendarSubscriptions = ref<string[]>([])
 
 const eventForm = ref({
   title: '',
-  startTime: '',
-  endTime: '',
+  startDate: selectedDate.value,
+  endDate: selectedDate.value,
+  isAllDay: false,
+  startTime: '09:00',
+  endTime: '10:00',
   notes: '',
 })
 
@@ -349,6 +430,19 @@ function formatIsoDate(date: Date) {
   return `${year}-${month}-${day}`
 }
 
+function parseIsoDate(value: string) {
+  if (!isIsoDate(value)) return null
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function addDaysToIsoDate(value: string, days: number) {
+  const date = parseIsoDate(value)
+  if (!date) return null
+  date.setDate(date.getDate() + days)
+  return formatIsoDate(date)
+}
+
 function formatSelectedDate(value: string) {
   return new Date(value).toLocaleDateString('de-AT', {
     weekday: 'long',
@@ -359,9 +453,13 @@ function formatSelectedDate(value: string) {
 }
 
 function formatTimeRange(start?: string | null, end?: string | null) {
-  if (!start && !end) return 'Ganztägig'
-  if (start && end) return `${start} – ${end}`
-  return start || end || 'Ganztägig'
+  const formatTime = (value?: string | null) => value ? value.slice(0, 5) : ''
+  const formattedStart = formatTime(start)
+  const formattedEnd = formatTime(end)
+
+  if (!formattedStart && !formattedEnd) return 'Ganztägig'
+  if (formattedStart && formattedEnd) return `${formattedStart} – ${formattedEnd}`
+  return formattedStart || formattedEnd || 'Ganztägig'
 }
 
 function getEventsForDay(isoDate: string) {
@@ -372,13 +470,150 @@ function getMealsForDay(isoDate: string) {
   return mealPlans.value.filter(x => x.date === isoDate)
 }
 
-async function loadMonthData() {
-  const [eventData, mealData] = await Promise.all([
-  apiFetch<CalendarEvent[]>(`/CalendarEvents?year=${currentYear.value}&month=${currentMonth.value}`),
-  apiFetch<MealPlan[]>(`/MealPlans/month?year=${currentYear.value}&month=${currentMonth.value}`),
-])
+function loadCalendarSubscriptions() {
+  try {
+    const raw = localStorage.getItem('calendarSubscriptions')
+    if (!raw) {
+      calendarSubscriptions.value = []
+      return
+    }
 
-  events.value = eventData ?? []
+    const parsed = JSON.parse(raw)
+    calendarSubscriptions.value = Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      : []
+  } catch {
+    calendarSubscriptions.value = []
+  }
+}
+
+function persistCalendarSubscriptions() {
+  localStorage.setItem('calendarSubscriptions', JSON.stringify(calendarSubscriptions.value))
+}
+
+function addSubscription() {
+  const url = subscriptionUrl.value.trim()
+  if (!url) {
+    error.value = 'Bitte eine Kalender-URL eingeben.'
+    return
+  }
+
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('unsupported')
+    }
+  } catch {
+    error.value = 'Bitte eine gültige http(s)-Kalender-URL eingeben.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+
+  if (!calendarSubscriptions.value.includes(url)) {
+    calendarSubscriptions.value = [...calendarSubscriptions.value, url]
+    persistCalendarSubscriptions()
+  }
+
+  subscriptionUrl.value = ''
+  success.value = 'Kalender-Abo gespeichert.'
+  void loadMonthData()
+}
+
+function removeSubscription(url: string) {
+  calendarSubscriptions.value = calendarSubscriptions.value.filter((entry) => entry !== url)
+  persistCalendarSubscriptions()
+  success.value = 'Kalender-Abo entfernt.'
+  void loadMonthData()
+}
+
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function normalizeTimeValue(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null
+  }
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function toMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function addOneHour(value: string) {
+  const normalized = normalizeTimeValue(value)
+  if (!normalized) return ''
+
+  const totalMinutes = (toMinutes(normalized) + 60) % (24 * 60)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function toBackendTimeValue(value: string) {
+  return value ? `${value}:00` : null
+}
+
+function resetEventForm() {
+  eventForm.value = {
+    title: '',
+    startDate: selectedDate.value,
+    endDate: selectedDate.value,
+    isAllDay: false,
+    startTime: '09:00',
+    endTime: '10:00',
+    notes: '',
+  }
+}
+
+function openEventModal() {
+  error.value = ''
+  success.value = ''
+  resetEventForm()
+  showEventModal.value = true
+}
+
+async function loadMonthData() {
+  const subscriptions = calendarSubscriptions.value
+  const [eventData, mealData] = await Promise.all([
+    apiFetch<CalendarEvent[]>(`/CalendarEvents?year=${currentYear.value}&month=${currentMonth.value}`),
+    apiFetch<MealPlan[]>(`/MealPlans/month?year=${currentYear.value}&month=${currentMonth.value}`),
+  ])
+
+  let importedData: CalendarSubscriptionPreview[] = []
+  if (subscriptions.length > 0) {
+    try {
+      importedData = await apiFetch<CalendarSubscriptionPreview[]>('/CalendarEvents/imported', {
+        method: 'POST',
+        body: JSON.stringify({
+          year: currentYear.value,
+          month: currentMonth.value,
+          urls: subscriptions,
+        }),
+      })
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht geladen werden.'
+    }
+  }
+
+  events.value = [
+    ...(eventData ?? []),
+    ...((importedData ?? []).flatMap((subscription) => subscription.events)),
+  ]
   mealPlans.value = mealData ?? []
 }
 
@@ -387,34 +622,94 @@ async function loadRecipes() {
 }
 
 async function createEvent() {
-  await apiFetch('/CalendarEvents', {
-    method: 'POST',
-    body: JSON.stringify({
-      date: selectedDate.value,
-      title: eventForm.value.title,
-      startTime: eventForm.value.startTime || null,
-      endTime: eventForm.value.endTime || null,
-      notes: eventForm.value.notes || null,
-    }),
-  })
+  error.value = ''
+  success.value = ''
 
-  eventForm.value = {
-    title: '',
-    startTime: '',
-    endTime: '',
-    notes: '',
+  const title = eventForm.value.title.trim()
+  const startDate = eventForm.value.startDate
+  const endDate = eventForm.value.endDate
+  const startTime = eventForm.value.isAllDay ? '' : normalizeTimeValue(eventForm.value.startTime)
+  const endTime = eventForm.value.isAllDay ? '' : normalizeTimeValue(eventForm.value.endTime)
+
+  if (!title) {
+    error.value = 'Bitte einen Titel für den Termin angeben.'
+    return
+  }
+
+  if (!isIsoDate(startDate) || !isIsoDate(endDate)) {
+    error.value = 'Bitte gültige Start- und Enddaten angeben.'
+    return
+  }
+
+  if (startTime === null || endTime === null) {
+    error.value = 'Bitte Uhrzeiten im Format HH:mm eingeben.'
+    return
+  }
+
+  if (endDate < startDate) {
+    error.value = 'Das Enddatum darf nicht vor dem Startdatum liegen.'
+    return
+  }
+
+  if (startTime && endTime && toMinutes(endTime) < toMinutes(startTime)) {
+    error.value = 'Die Endzeit darf nicht vor der Startzeit liegen.'
+    return
+  }
+
+  const dates: string[] = []
+  let currentDate = startDate
+  while (currentDate <= endDate) {
+    dates.push(currentDate)
+    const nextDate = addDaysToIsoDate(currentDate, 1)
+    if (!nextDate) {
+      error.value = 'Der Terminzeitraum konnte nicht verarbeitet werden.'
+      return
+    }
+    currentDate = nextDate
+  }
+
+  try {
+    await Promise.all(
+      dates.map((date) =>
+        apiFetch('/CalendarEvents', {
+          method: 'POST',
+          body: JSON.stringify({
+            date,
+            title,
+            startTime: toBackendTimeValue(startTime || ''),
+            endTime: toBackendTimeValue(endTime || ''),
+            notes: eventForm.value.notes.trim() || null,
+          }),
+        }),
+      ),
+    )
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Termin konnte nicht gespeichert werden.'
+    return
   }
 
   showEventModal.value = false
+  success.value = dates.length === 1 ? 'Termin gespeichert.' : `${dates.length} Termine gespeichert.`
+  resetEventForm()
   await loadMonthData()
 }
 
 async function deleteEvent(id: string) {
-  await apiFetch(`/CalendarEvents/${id}`, { method: 'DELETE' })
+  error.value = ''
+  success.value = ''
+  try {
+    await apiFetch(`/CalendarEvents/${id}`, { method: 'DELETE' })
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Termin konnte nicht gelöscht werden.'
+    return
+  }
+  success.value = 'Termin gelöscht.'
   await loadMonthData()
 }
 
 async function createMeal() {
+  error.value = ''
+  success.value = ''
   await apiFetch('/mealPlans', {
     method: 'POST',
     body: JSON.stringify({
@@ -434,14 +729,18 @@ async function createMeal() {
   }
 
   showMealModal.value = false
+  success.value = 'Meal gespeichert.'
   await loadMonthData()
 }
 
 async function deleteMeal(id: string) {
+  error.value = ''
+  success.value = ''
   await apiFetch(`/MealPlans/${id}`, {
     method: 'DELETE',
   })
 
+  success.value = 'Meal gelöscht.'
   await loadMonthData()
 }
 
@@ -474,7 +773,36 @@ watch([currentYear, currentMonth], async () => {
   await loadMonthData()
 })
 
+watch(selectedDate, () => {
+  if (!showEventModal.value) return
+  eventForm.value.startDate = selectedDate.value
+  eventForm.value.endDate = selectedDate.value
+})
+
+watch(() => eventForm.value.startTime, (value) => {
+  if (eventForm.value.isAllDay) return
+  const normalized = normalizeTimeValue(value)
+  if (!normalized) return
+
+  const currentEnd = normalizeTimeValue(eventForm.value.endTime)
+  if (!currentEnd || currentEnd === addOneHour(normalized) || toMinutes(currentEnd) <= toMinutes(normalized)) {
+    eventForm.value.endTime = addOneHour(normalized)
+  }
+})
+
+watch(() => eventForm.value.isAllDay, (isAllDay) => {
+  if (isAllDay) return
+  if (!normalizeTimeValue(eventForm.value.startTime)) {
+    eventForm.value.startTime = '09:00'
+  }
+  if (!normalizeTimeValue(eventForm.value.endTime)) {
+    eventForm.value.endTime = addOneHour(eventForm.value.startTime)
+  }
+})
+
 onMounted(async () => {
+  loadCalendarSubscriptions()
+  resetEventForm()
   await Promise.all([loadMonthData(), loadRecipes()])
 })
 </script>
@@ -512,9 +840,29 @@ onMounted(async () => {
   margin-top: 4px;
 }
 
+.alert {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.alert-error {
+  background: rgba(239,68,68,0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.2);
+}
+
+.alert-success {
+  background: rgba(16,185,129,0.1);
+  color: #10b981;
+  border: 1px solid rgba(16,185,129,0.2);
+}
+
 .header-actions {
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .btn-secondary,
@@ -780,6 +1128,18 @@ onMounted(async () => {
   font-size: 13px;
 }
 
+.subscription-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(99,102,241,0.12);
+  color: var(--primary);
+}
+
 .btn-delete {
   align-self: flex-end;
   border: none;
@@ -842,16 +1202,48 @@ onMounted(async () => {
   gap: 16px;
 }
 
+.modal-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.subscription-add-row {
+  align-items: end;
+}
+
+.subscription-url-group {
+  grid-column: span 1;
+}
+
+.subscription-action-group {
+  min-width: 140px;
 }
 
 .form-group label {

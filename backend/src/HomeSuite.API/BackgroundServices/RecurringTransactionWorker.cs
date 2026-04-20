@@ -92,6 +92,7 @@ public class RecurringTransactionWorker : BackgroundService
         {
             "weekly" => current.AddDays(7),
             "yearly" => current.AddYears(1),
+            "quarterly" => current.AddMonths(3),
             _        => current.AddMonths(1),
         };
 }

@@ -1,10 +1,18 @@
 <template>
   <div :class="['app-wrapper', { 'dark-mode': isDark }]">
+<<<<<<< HEAD
     <nav class="top-navbar">
       <div class="nav-brand">
         <img src="/homesuite.png" alt="HomeSuite Logo" class="brand-logo" />
         <span class="brand-name">HomeSuite</span>
       </div>
+=======
+  <nav class="top-navbar">
+    <div class="nav-brand">
+      <img src="/Homesuite.png" alt="HomeSuite Logo" class="brand-logo" />
+      <span class="brand-name">HomeSuite</span>
+    </div>
+>>>>>>> 78bc6a6a90b904b0de0a01b9fd8a0ddfe5b73293
 
       <div class="nav-links">
         <RouterLink to="/" class="nav-item" exact-active-class="active">
@@ -66,6 +74,7 @@ function toggleDark() {
 
 <style>
 
+<<<<<<< HEAD
 .nav-brand {
   display: flex;
   align-items: center;
@@ -82,6 +91,10 @@ function toggleDark() {
   font-weight: 600;
   font-size: 1.2rem;
 }
+=======
+
+
+>>>>>>> 78bc6a6a90b904b0de0a01b9fd8a0ddfe5b73293
 :root {
   --bg: #f0f4f8;
   --surface: #ffffff;
@@ -153,6 +166,43 @@ body {
   border-bottom: 1px solid var(--border);
   box-shadow: var(--nav-shadow);
   transition: background 0.3s ease, border-color 0.3s ease;
+  border-radius: 16px;                 /* 👉 abgerundet */
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);         /* 👉 Glass-Effekt */
+  -webkit-backdrop-filter: blur(12px);
+}
+
+
+
+/* Dark Mode */
+.dark-mode .top-navbar {
+  background: rgba(30, 30, 30, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+/* Brand Bereich */
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Logo */
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+
+  border-radius: 10px;                 /* 👉 Logo auch abgerundet */
+  padding: 4px;
+
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* Dark Mode Logo */
+.dark-mode .brand-logo {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .nav-brand {

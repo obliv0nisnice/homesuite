@@ -8,4 +8,7 @@ public class CalendarEventDto
     public TimeOnly? StartTime { get; set; }
     public TimeOnly? EndTime { get; set; }
     public string? Notes { get; set; }
+    public bool IsImported { get; set; }
+    public string? SourceName { get; set; }
+    public string? SourceUrl { get; set; }
 }

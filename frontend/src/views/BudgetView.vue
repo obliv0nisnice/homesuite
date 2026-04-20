@@ -427,9 +427,13 @@ function renderDonut() {
   const dark = isDarkMode()
   const W = 220, H = 220, cx = W / 2, cy = H / 2
   const outerR = 90, innerR = 60
-  const GAP = 0.05
+  const ringWidth = outerR - innerR
+  const arcRadius = innerR + ringWidth / 2
+  const GAP = 0.035
 
   ctx.clearRect(0, 0, W, H)
+  canvas.width = W
+  canvas.height = H
 
   const incomeData = incomeCategories.value.filter((c) => c.amount > 0)
   const expenseData = expenseCategories.value.filter((c) => c.amount > 0)
@@ -437,11 +441,14 @@ function renderDonut() {
   const totalExp = expenseData.reduce((s, c) => s + c.amount, 0)
   const grandTotal = totalInc + totalExp
 
+  ctx.lineCap = 'butt'
+  ctx.lineWidth = ringWidth
+
   if (grandTotal <= 0) {
-    ctx.beginPath(); ctx.arc(cx, cy, outerR, 0, Math.PI * 2)
-    ctx.fillStyle = dark ? '#334155' : '#e2e8f0'; ctx.fill()
-    ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
-    ctx.fillStyle = dark ? '#1e293b' : '#ffffff'; ctx.fill()
+    ctx.beginPath()
+    ctx.strokeStyle = dark ? '#334155' : '#e2e8f0'
+    ctx.arc(cx, cy, arcRadius, 0, Math.PI * 2)
+    ctx.stroke()
     return
   }
 
@@ -449,62 +456,63 @@ function renderDonut() {
   const expArcTotal = (totalExp / grandTotal) * Math.PI * 2
 
   // Draw income slices (green zone)
+  ctx.beginPath()
+  ctx.strokeStyle = dark ? '#1e293b' : '#f8fafc'
+  ctx.arc(cx, cy, arcRadius, 0, Math.PI * 2)
+  ctx.stroke()
+
+  const drawSegment = (start: number, end: number, color: string) => {
+    if (end <= start) return
+    ctx.beginPath()
+    ctx.arc(cx, cy, arcRadius, start, end)
+    ctx.strokeStyle = color
+    ctx.shadowColor = `${color}55`
+    ctx.shadowBlur = 8
+    ctx.stroke()
+  }
+
   let angle = -Math.PI / 2
   incomeData.forEach((cat) => {
     const slice = (cat.amount / grandTotal) * Math.PI * 2
     const start = angle + GAP / 2
     const end = angle + slice - GAP / 2
-    ctx.beginPath(); ctx.moveTo(cx, cy)
-    ctx.arc(cx, cy, outerR, start, end)
-    ctx.closePath()
-    ctx.fillStyle = cat.color
-    ctx.shadowColor = `${cat.color}55`; ctx.shadowBlur = 8
-    ctx.fill()
+  // Draw a visible white gap arc between income and expense
+    drawSegment(start, end, cat.color)
     angle += slice
   })
 
-  // Draw a visible white gap arc between income and expense
   if (totalInc > 0 && totalExp > 0) {
     angle = -Math.PI / 2 + incArcTotal
   }
 
-  // Draw expense slices (non-green zone)
   expenseData.forEach((cat) => {
     const slice = (cat.amount / grandTotal) * Math.PI * 2
     const start = angle + GAP / 2
     const end = angle + slice - GAP / 2
-    ctx.beginPath(); ctx.moveTo(cx, cy)
-    ctx.arc(cx, cy, outerR, start, end)
-    ctx.closePath()
-    ctx.fillStyle = cat.color
-    ctx.shadowColor = `${cat.color}55`; ctx.shadowBlur = 8
-    ctx.fill()
+    drawSegment(start, end, cat.color)
     angle += slice
   })
 
   ctx.shadowBlur = 0
 
-  // Bold divider lines between income / expense sections
+  const drawDiv = (a: number) => {
+    ctx.beginPath()
+    ctx.moveTo(cx + innerR * Math.cos(a), cy + innerR * Math.sin(a))
+    ctx.lineTo(cx + outerR * Math.cos(a), cy + outerR * Math.sin(a))
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 4
+    ctx.stroke()
+  }
+
   if (totalInc > 0 && totalExp > 0) {
-    const drawDiv = (a: number) => {
-      ctx.beginPath()
-      ctx.moveTo(cx + innerR * Math.cos(a), cy + innerR * Math.sin(a))
-      ctx.lineTo(cx + outerR * Math.cos(a), cy + outerR * Math.sin(a))
-      ctx.strokeStyle = dark ? '#0f172a' : '#ffffff'
-      ctx.lineWidth = 4; ctx.stroke()
-    }
     drawDiv(-Math.PI / 2)
     drawDiv(-Math.PI / 2 + incArcTotal)
   }
 
-  // Center hole
-  ctx.beginPath(); ctx.arc(cx, cy, innerR, 0, Math.PI * 2)
-  ctx.fillStyle = dark ? '#1e293b' : '#ffffff'
-  ctx.shadowBlur = 0; ctx.fill()
+  ctx.lineWidth = ringWidth
 
-  // IN / EX labels in arc midpoints
   const drawArcLabel = (text: string, midAngle: number) => {
-    const r = innerR + 16
+    const r = arcRadius
     ctx.font = 'bold 8px system-ui'
     ctx.fillStyle = dark ? '#94a3b8' : '#64748b'
     ctx.textAlign = 'center'
@@ -745,7 +753,16 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
     <div class="transactions-card">
       <div class="chart-header">
         <span class="chart-title">Letzte Transaktionen</span>
-        <span class="chart-badge">{{ recentTransactions.length }} Einträge</span>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button
+            v-if="recurringTransactions.length > 0"
+            class="btn-recurring-manage"
+            @click="showRecurringModal = true"
+          >
+            🔁 Wiederkehrend verwalten
+          </button>
+          <span class="chart-badge">{{ recentTransactions.length }} Einträge</span>
+        </div>
       </div>
       <div class="trans-table">
         <div class="trans-row header-row">
@@ -774,6 +791,15 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
             {{ tx.categoryType === 'Income' ? '+' : '-' }}€{{ Math.abs(tx.amount).toFixed(2) }}
           </span>
           <span class="trans-actions">
+            <button
+              v-if="tx.isRecurring"
+              class="btn-stop-inline"
+              @click="stopRecurring(tx)"
+              :disabled="stoppingRecurringId === tx.id"
+              title="Wiederkehrend ausschalten"
+            >
+              {{ stoppingRecurringId === tx.id ? '…' : '⏹' }}
+            </button>
             <button class="btn-edit" @click="openEditModal(tx)" title="Bearbeiten">✏️</button>
             <button class="btn-delete" @click="deleteTransaction(tx.id)" :disabled="deletingId === tx.id" title="Löschen">
               {{ deletingId === tx.id ? '…' : '✕' }}
@@ -877,7 +903,7 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
               <div v-if="newTransaction.isRecurring" class="interval-options" style="margin-top: 12px">
                 <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'weekly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="weekly" />Wöchentlich</label>
                 <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'monthly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="monthly" />Monatlich</label>
-                <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'quarterly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="quarterly" />Quartal</label>
+                <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'quarterly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="quarterly" />Quartalsweise</label>
                 <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'yearly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="yearly" />Jährlich</label>
               </div>
             </div>
@@ -936,7 +962,7 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
               <div v-if="editTransaction.isRecurring" class="interval-options" style="margin-top: 12px">
                 <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'weekly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="weekly" />Wöchentlich</label>
                 <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'monthly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="monthly" />Monatlich</label>
-                <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'quarterly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="quarterly" />Quartal</label>
+                <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'quarterly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="quarterly" />Quartalsweise</label>
                 <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'yearly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="yearly" />Jährlich</label>
               </div>
             </div>
@@ -1053,10 +1079,16 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
 .btn-edit-limits { padding: 5px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text); transition: background 0.15s; }
 .btn-edit-limits:hover { background: var(--border); }
 
+.btn-recurring-manage { padding: 5px 12px; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.18); border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--primary); transition: background 0.15s, border-color 0.15s; }
+.btn-recurring-manage:hover { background: rgba(99,102,241,0.16); border-color: rgba(99,102,241,0.28); }
+
 .btn-stop-recurring { background: none; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 7px; transition: all 0.15s; white-space: nowrap; font-weight: 600; }
 .btn-stop-recurring:hover { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: #f59e0b; }
 .btn-stop-recurring:disabled { opacity: 0.5; cursor: default; }
 
+.btn-stop-inline { background: none; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 4px 6px; border-radius: 6px; transition: all 0.15s; }
+.btn-stop-inline:hover { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: #f59e0b; }
+.btn-stop-inline:disabled { opacity: 0.5; cursor: default; }
 /* Stats */
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
