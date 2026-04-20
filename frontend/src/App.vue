@@ -1,18 +1,10 @@
 <template>
   <div :class="['app-wrapper', { 'dark-mode': isDark }]">
-<<<<<<< HEAD
     <nav class="top-navbar">
       <div class="nav-brand">
         <img src="/homesuite.png" alt="HomeSuite Logo" class="brand-logo" />
         <span class="brand-name">HomeSuite</span>
       </div>
-=======
-  <nav class="top-navbar">
-    <div class="nav-brand">
-      <img src="/Homesuite.png" alt="HomeSuite Logo" class="brand-logo" />
-      <span class="brand-name">HomeSuite</span>
-    </div>
->>>>>>> 78bc6a6a90b904b0de0a01b9fd8a0ddfe5b73293
 
       <div class="nav-links">
         <RouterLink to="/" class="nav-item" exact-active-class="active">
@@ -73,28 +65,6 @@ function toggleDark() {
 </script>
 
 <style>
-
-<<<<<<< HEAD
-.nav-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-logo {
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
-}
-
-.brand-name {
-  font-weight: 600;
-  font-size: 1.2rem;
-}
-=======
-
-
->>>>>>> 78bc6a6a90b904b0de0a01b9fd8a0ddfe5b73293
 :root {
   --bg: #f0f4f8;
   --surface: #ffffff;
@@ -327,4 +297,3 @@ body {
   }
 }
 </style>
-

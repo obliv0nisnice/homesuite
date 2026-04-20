@@ -151,11 +151,11 @@ async function loadData() {
     shoppingLists.value = loadedShoppingLists
 
     if (!newMealPlan.value.recipeId && loadedRecipes.length > 0) {
-      newMealPlan.value.recipeId = loadedRecipes[0].id
+      newMealPlan.value.recipeId = loadedRecipes[0]?.id ?? ''
     }
 
     if (!selectedShoppingListId.value && loadedShoppingLists.length > 0) {
-      selectedShoppingListId.value = loadedShoppingLists[0].id
+      selectedShoppingListId.value = loadedShoppingLists[0]?.id ?? ''
     }
 
     if (!newMealPlan.value.date) {

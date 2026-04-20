@@ -195,7 +195,7 @@ function getNewPriceOptionState(item: ShoppingItem) {
     }
   }
 
-  return newPriceOptionByItemId.value[item.id]
+  return newPriceOptionByItemId.value[item.id]!
 }
 
 async function loadStoreSummaries() {
@@ -238,7 +238,7 @@ async function loadData() {
     }
 
     if (!selectedListId.value && loadedShoppingLists.length > 0) {
-      selectedListId.value = loadedShoppingLists[0].id
+      selectedListId.value = loadedShoppingLists[0]?.id ?? ''
     }
 
     if (selectedListId.value && !loadedShoppingLists.some((x) => x.id === selectedListId.value)) {

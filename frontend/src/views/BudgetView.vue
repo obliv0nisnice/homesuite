@@ -104,10 +104,10 @@ const expenseCategories = computed<CategorySummary[]>(() =>
       return {
         id: category.id,
         name: category.name,
-        icon: categoryIcons[index % categoryIcons.length],
+        icon: categoryIcons[index % categoryIcons.length] ?? '📦',
         amount: Number(spent.toFixed(2)),
         limit: derivedLimit,
-        color: categoryPalette[index % categoryPalette.length],
+        color: categoryPalette[index % categoryPalette.length] ?? '#6366f1',
       }
     }),
 )
@@ -125,7 +125,7 @@ const incomeCategories = computed<CategorySummary[]>(() =>
         icon: '💵',
         amount: Number(earned.toFixed(2)),
         limit: 0,
-        color: incomePalette[index % incomePalette.length],
+        color: incomePalette[index % incomePalette.length] ?? '#10b981',
       }
     }),
 )
@@ -563,7 +563,9 @@ function renderBar() {
 
   monthKeys.forEach((month, i) => {
     const cx = padL + groupW * i + groupW / 2
-    const incH = (income[i] / maxVal) * chartH, expH = (expenses[i] / maxVal) * chartH
+    const incomeValue = income[i] ?? 0
+    const expenseValue = expenses[i] ?? 0
+    const incH = (incomeValue / maxVal) * chartH, expH = (expenseValue / maxVal) * chartH
     const g1 = ctx.createLinearGradient(0, padT + chartH - incH, 0, padT + chartH)
     g1.addColorStop(0, '#10b981'); g1.addColorStop(1, '#10b98155')
     ctx.fillStyle = g1; roundRect(ctx, cx - barW - 2, padT + chartH - incH, barW, incH, 4); ctx.fill()

@@ -77,7 +77,7 @@ async function loadData() {
     shoppingLists.value = shoppingListData
 
     if (!selectedRecipeId.value && recipeData.length > 0) {
-      selectedRecipeId.value = recipeData[0].id
+      selectedRecipeId.value = recipeData[0]?.id ?? ''
     }
 
     if (selectedRecipeId.value && !recipeData.some((x) => x.id === selectedRecipeId.value)) {
@@ -85,7 +85,7 @@ async function loadData() {
     }
 
     if (!selectedShoppingListId.value && shoppingListData.length > 0) {
-      selectedShoppingListId.value = shoppingListData[0].id
+      selectedShoppingListId.value = shoppingListData[0]?.id ?? ''
     }
 
     if (
