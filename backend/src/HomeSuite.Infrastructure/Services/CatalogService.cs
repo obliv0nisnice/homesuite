@@ -133,6 +133,7 @@ public class CatalogService : ICatalogService
             BrandHint = item.BrandHint,
             IsStaple = item.IsStaple,
             Prices = item.Prices
+                .Where(x => x.IsAvailable)
                 .OrderBy(x => x.TotalPrice ?? decimal.MaxValue)
                 .ThenBy(x => x.UnitPrice ?? decimal.MaxValue)
                 .Select(x => new CatalogItemPriceDto
@@ -149,11 +150,13 @@ public class CatalogService : ICatalogService
                 })
                 .ToList(),
             BestUnitPrice = item.Prices
+                .Where(x => x.IsAvailable)
                 .Where(x => x.UnitPrice.HasValue)
                 .OrderBy(x => x.UnitPrice)
                 .Select(x => x.UnitPrice)
                 .FirstOrDefault(),
             BestTotalPrice = item.Prices
+                .Where(x => x.IsAvailable)
                 .Where(x => x.TotalPrice.HasValue)
                 .OrderBy(x => x.TotalPrice)
                 .Select(x => x.TotalPrice)
@@ -173,6 +176,7 @@ public class CatalogService : ICatalogService
             BrandHint = item.BrandHint,
             IsStaple = item.IsStaple,
             Prices = item.Prices
+                .Where(x => x.IsAvailable)
                 .OrderBy(x => x.TotalPrice ?? decimal.MaxValue)
                 .ThenBy(x => x.UnitPrice ?? decimal.MaxValue)
                 .Select(x => new CatalogItemPriceDto
@@ -189,11 +193,13 @@ public class CatalogService : ICatalogService
                 })
                 .ToList(),
             BestUnitPrice = item.Prices
+                .Where(x => x.IsAvailable)
                 .Where(x => x.UnitPrice.HasValue)
                 .OrderBy(x => x.UnitPrice)
                 .Select(x => x.UnitPrice)
                 .FirstOrDefault(),
             BestTotalPrice = item.Prices
+                .Where(x => x.IsAvailable)
                 .Where(x => x.TotalPrice.HasValue)
                 .OrderBy(x => x.TotalPrice)
                 .Select(x => x.TotalPrice)

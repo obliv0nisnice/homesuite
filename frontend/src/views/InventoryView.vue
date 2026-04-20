@@ -10,7 +10,14 @@ type InventoryItem = {
   notes?: string | null
 }
 
+type CatalogItem = {
+  id: string
+  name: string
+  defaultUnit: string
+}
+
 const items = ref<InventoryItem[]>([])
+const catalogItems = ref<CatalogItem[]>([])
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
@@ -32,13 +39,50 @@ const editItem = ref({
 
 const totalItems = computed(() => items.value.length)
 
+const newItemSuggestions = computed(() => {
+  const query = newItem.value.name.trim().toLowerCase()
+
+  return catalogItems.value
+    .filter((item) => !query || item.name.toLowerCase().includes(query))
+    .slice(0, 8)
+})
+
+const editItemSuggestions = computed(() => {
+  const query = editItem.value.name.trim().toLowerCase()
+
+  return catalogItems.value
+    .filter((item) => !query || item.name.toLowerCase().includes(query))
+    .slice(0, 8)
+})
+
+function applyCatalogSuggestion(target: { name: string; unit: string }) {
+  const matchingCatalogItem = catalogItems.value.find(
+    (item) => item.name.toLowerCase() === target.name.trim().toLowerCase(),
+  )
+
+  if (!matchingCatalogItem) {
+    return
+  }
+
+  target.name = matchingCatalogItem.name
+  if (!target.unit.trim()) {
+    target.unit = matchingCatalogItem.defaultUnit
+  }
+}
+
 async function loadData() {
   loading.value = true
   error.value = ''
   success.value = ''
 
   try {
-    items.value = await apiFetch<InventoryItem[]>('/inventory')
+    const [inventoryData, catalogItemData] = await Promise.all([
+      apiFetch<InventoryItem[]>('/inventory'),
+      apiFetch<CatalogItem[]>('/catalog'),
+    ])
+
+    items.value = inventoryData
+    catalogItems.value = catalogItemData
   } catch (err) {
     console.error(err)
     error.value = err instanceof Error ? err.message : 'Inventar konnte nicht geladen werden.'
@@ -177,7 +221,14 @@ onMounted(loadData)
 
         <form @submit.prevent="createItem">
           <div class="form-grid">
-            <input v-model="newItem.name" type="text" placeholder="Name" required />
+            <input
+              v-model="newItem.name"
+              list="inventory-catalog-suggestions"
+              type="text"
+              placeholder="Name"
+              required
+              @change="applyCatalogSuggestion(newItem)"
+            />
             <input v-model="newItem.quantity" type="number" min="0" step="0.01" placeholder="Menge" required />
             <input v-model="newItem.unit" type="text" placeholder="Einheit" required />
             <textarea v-model="newItem.notes" class="field-span-2" placeholder="Notizen"></textarea>
@@ -188,6 +239,11 @@ onMounted(loadData)
           </div>
         </form>
       </div>
+      <datalist id="inventory-catalog-suggestions">
+        <option v-for="item in newItemSuggestions" :key="item.id" :value="item.name">
+          {{ item.defaultUnit }}
+        </option>
+      </datalist>
 
       <div class="data-card">
         <div class="card-header">
@@ -210,7 +266,14 @@ onMounted(loadData)
           <tbody>
             <tr v-for="item in items" :key="item.id">
               <template v-if="editingItemId === item.id">
-                <td><input v-model="editItem.name" type="text" /></td>
+                <td>
+                  <input
+                    v-model="editItem.name"
+                    list="inventory-edit-catalog-suggestions"
+                    type="text"
+                    @change="applyCatalogSuggestion(editItem)"
+                  />
+                </td>
                 <td><input v-model="editItem.quantity" type="number" min="0" step="0.01" /></td>
                 <td><input v-model="editItem.unit" type="text" /></td>
                 <td><textarea v-model="editItem.notes"></textarea></td>
@@ -235,6 +298,11 @@ onMounted(loadData)
         </table>
 
         <div v-else class="empty-state">Noch keine Inventar-Einträge vorhanden.</div>
+        <datalist id="inventory-edit-catalog-suggestions">
+          <option v-for="item in editItemSuggestions" :key="item.id" :value="item.name">
+            {{ item.defaultUnit }}
+          </option>
+        </datalist>
       </div>
     </div>
   </div>

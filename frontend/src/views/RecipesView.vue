@@ -24,8 +24,15 @@ type ShoppingListOption = {
   createdAt: string
 }
 
+type CatalogItem = {
+  id: string
+  name: string
+  defaultUnit: string
+}
+
 const recipes = ref<Recipe[]>([])
 const shoppingLists = ref<ShoppingListOption[]>([])
+const catalogItems = ref<CatalogItem[]>([])
 const selectedRecipeId = ref<string>('')
 const selectedShoppingListId = ref<string>('')
 const loading = ref(false)
@@ -62,19 +69,52 @@ const selectedRecipe = computed(() =>
   recipes.value.find((x) => x.id === selectedRecipeId.value) ?? null,
 )
 
+const newIngredientSuggestions = computed(() => {
+  const query = newIngredient.value.name.trim().toLowerCase()
+
+  return catalogItems.value
+    .filter((item) => !query || item.name.toLowerCase().includes(query))
+    .slice(0, 8)
+})
+
+const editIngredientSuggestions = computed(() => {
+  const query = editIngredient.value.name.trim().toLowerCase()
+
+  return catalogItems.value
+    .filter((item) => !query || item.name.toLowerCase().includes(query))
+    .slice(0, 8)
+})
+
+function applyCatalogSuggestion(target: { name: string; unit: string }) {
+  const matchingCatalogItem = catalogItems.value.find(
+    (item) => item.name.toLowerCase() === target.name.trim().toLowerCase(),
+  )
+
+  if (!matchingCatalogItem) {
+    return
+  }
+
+  target.name = matchingCatalogItem.name
+  if (!target.unit.trim()) {
+    target.unit = matchingCatalogItem.defaultUnit
+  }
+}
+
 async function loadData() {
   loading.value = true
   error.value = ''
   success.value = ''
 
   try {
-    const [recipeData, shoppingListData] = await Promise.all([
+    const [recipeData, shoppingListData, catalogItemData] = await Promise.all([
       apiFetch<Recipe[]>('/recipes'),
       apiFetch<ShoppingListOption[]>('/shoppinglists'),
+      apiFetch<CatalogItem[]>('/catalog'),
     ])
 
     recipes.value = recipeData
     shoppingLists.value = shoppingListData
+    catalogItems.value = catalogItemData
 
     if (!selectedRecipeId.value && recipeData.length > 0) {
       selectedRecipeId.value = recipeData[0]?.id ?? ''
@@ -438,7 +478,14 @@ onMounted(loadData)
       <div class="form-card" style="padding: 0; border: none; box-shadow:none; background:transparent;">
         <form @submit.prevent="createIngredient">
           <div class="form-grid">
-            <input v-model="newIngredient.name" type="text" placeholder="Zutat" required />
+            <input
+              v-model="newIngredient.name"
+              list="recipe-ingredient-suggestions"
+              type="text"
+              placeholder="Zutat"
+              required
+              @change="applyCatalogSuggestion(newIngredient)"
+            />
             <input v-model="newIngredient.quantity" type="number" min="0" step="0.01" placeholder="Menge" required />
             <input v-model="newIngredient.unit" type="text" placeholder="Einheit" required />
           </div>
@@ -447,6 +494,11 @@ onMounted(loadData)
           </div>
         </form>
       </div>
+      <datalist id="recipe-ingredient-suggestions">
+        <option v-for="item in newIngredientSuggestions" :key="item.id" :value="item.name">
+          {{ item.defaultUnit }}
+        </option>
+      </datalist>
 
       <table v-if="selectedRecipe.ingredients.length > 0" class="data-table" style="margin-top: 18px;">
         <thead>
@@ -460,7 +512,14 @@ onMounted(loadData)
         <tbody>
           <tr v-for="ingredient in selectedRecipe.ingredients" :key="ingredient.id">
             <template v-if="editIngredientId === ingredient.id">
-              <td><input v-model="editIngredient.name" type="text" /></td>
+              <td>
+                <input
+                  v-model="editIngredient.name"
+                  list="recipe-edit-ingredient-suggestions"
+                  type="text"
+                  @change="applyCatalogSuggestion(editIngredient)"
+                />
+              </td>
               <td><input v-model="editIngredient.quantity" type="number" min="0" step="0.01" /></td>
               <td><input v-model="editIngredient.unit" type="text" /></td>
               <td class="actions">
@@ -483,6 +542,11 @@ onMounted(loadData)
       </table>
 
       <div v-else class="empty-state" style="margin-top: 18px;">Dieses Rezept enthält noch keine Zutaten.</div>
+      <datalist id="recipe-edit-ingredient-suggestions">
+        <option v-for="item in editIngredientSuggestions" :key="item.id" :value="item.name">
+          {{ item.defaultUnit }}
+        </option>
+      </datalist>
     </div>
   </div>
 </template>

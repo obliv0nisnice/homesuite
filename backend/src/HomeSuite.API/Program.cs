@@ -9,6 +9,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSingleton(new CatalogCrawlerOptions
+{
+    SourceRoot = builder.Configuration["CatalogCrawler:SourceRoot"]
+});
+builder.Services.AddSingleton<IPlaywrightStoreSearchService, PlaywrightStoreSearchService>();
 
 builder.Services.AddDbContext<HomeSuiteDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -40,11 +45,35 @@ builder.Services.AddHttpClient<SparPriceCrawlerSource>(client =>
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 HomeSuiteCrawler/1.0");
 });
 
+builder.Services.AddHttpClient<BipaPriceCrawlerSource>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+    client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("de-AT,de;q=0.9,en;q=0.8");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 HomeSuiteCrawler/1.0");
+});
+
+builder.Services.AddHttpClient<DmPriceCrawlerSource>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+    client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("de-AT,de;q=0.9,en;q=0.8");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 HomeSuiteCrawler/1.0");
+});
+
 builder.Services.AddScoped<IPriceCrawlerSource>(sp =>
     sp.GetRequiredService<BillaPriceCrawlerSource>());
 
 builder.Services.AddScoped<IPriceCrawlerSource>(sp =>
     sp.GetRequiredService<SparPriceCrawlerSource>());
+
+builder.Services.AddScoped<IPriceCrawlerSource>(sp =>
+    sp.GetRequiredService<BipaPriceCrawlerSource>());
+
+builder.Services.AddScoped<IPriceCrawlerSource>(sp =>
+    sp.GetRequiredService<DmPriceCrawlerSource>());
 
 builder.Services.AddHttpClient<BillaPriceCrawlerSource>(client =>
 {
@@ -55,9 +84,6 @@ builder.Services.AddHttpClient<BillaPriceCrawlerSource>(client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd(
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 HomeSuiteCrawler/1.0");
 });
-
-builder.Services.AddScoped<IPriceCrawlerSource>(sp =>
-    sp.GetRequiredService<BillaPriceCrawlerSource>());
 
 builder.Services.AddHostedService<CatalogPriceRefreshWorker>();
 

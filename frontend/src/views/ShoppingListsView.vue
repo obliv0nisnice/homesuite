@@ -20,6 +20,19 @@ type CatalogItem = {
   searchTerm?: string | null
   brandHint?: string | null
   isStaple: boolean
+  prices?: Array<{
+    id: string
+    storeName: string
+    productName: string
+    unitPrice?: number | null
+    totalPrice?: number | null
+    productUrl?: string | null
+    isAvailable: boolean
+    checkedAt: string
+    sourceType: string
+  }>
+  bestUnitPrice?: number | null
+  bestTotalPrice?: number | null
 }
 
 type ShoppingItemPriceOption = {
@@ -143,6 +156,22 @@ const expenseCategories = computed(() =>
   categories.value.filter((c) => c.type === 'Expense'),
 )
 
+const selectedCatalogEstimate = computed(() => {
+  if (!newItem.value.catalogItemId) {
+    return null
+  }
+
+  return getCatalogEstimate(newItem.value.catalogItemId, Number(newItem.value.quantity))
+})
+
+const catalogNameSuggestions = computed(() => {
+  const query = newItem.value.name.trim().toLowerCase()
+
+  return catalogItems.value
+    .filter((item) => !query || item.name.toLowerCase().includes(query))
+    .slice(0, 8)
+})
+
 function formatMoney(value?: number | null) {
   if (value == null) {
     return '—'
@@ -185,6 +214,62 @@ function applyCatalogSelection(
   target.sourceType = 'Manual'
 }
 
+function applyCatalogNameSuggestion() {
+  const matchingCatalogItem = catalogItems.value.find(
+    (item) => item.name.toLowerCase() === newItem.value.name.trim().toLowerCase(),
+  )
+
+  if (!matchingCatalogItem) {
+    return
+  }
+
+  newItem.value.name = matchingCatalogItem.name
+  newItem.value.unit = matchingCatalogItem.defaultUnit
+  newItem.value.catalogItemId = matchingCatalogItem.id
+}
+
+function getCatalogEstimate(catalogItemId: string, quantity: number) {
+  const selectedCatalogItem = catalogItems.value.find((x) => x.id === catalogItemId)
+  if (!selectedCatalogItem) {
+    return null
+  }
+
+  const availablePrices = (selectedCatalogItem.prices ?? [])
+    .filter((price) => price.isAvailable)
+    .sort((left, right) => {
+      const leftTotal = left.totalPrice ?? Number.POSITIVE_INFINITY
+      const rightTotal = right.totalPrice ?? Number.POSITIVE_INFINITY
+
+      if (leftTotal !== rightTotal) {
+        return leftTotal - rightTotal
+      }
+
+      return (left.unitPrice ?? Number.POSITIVE_INFINITY) - (right.unitPrice ?? Number.POSITIVE_INFINITY)
+    })
+
+  const bestPrice = availablePrices[0] ?? null
+  if (!bestPrice) {
+    return null
+  }
+
+  const normalizedQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1
+  const estimatedUnitPrice = bestPrice.unitPrice ?? null
+  const estimatedTotalPrice =
+    bestPrice.totalPrice != null
+      ? bestPrice.totalPrice * normalizedQuantity
+      : estimatedUnitPrice != null
+        ? estimatedUnitPrice * normalizedQuantity
+        : null
+
+  return {
+    storeName: bestPrice.storeName,
+    productName: bestPrice.productName,
+    estimatedUnitPrice,
+    estimatedTotalPrice,
+    productUrl: bestPrice.productUrl ?? null,
+  }
+}
+
 function getNewPriceOptionState(item: ShoppingItem) {
   if (!newPriceOptionByItemId.value[item.id]) {
     newPriceOptionByItemId.value[item.id] = {
@@ -200,20 +285,56 @@ function getNewPriceOptionState(item: ShoppingItem) {
   return newPriceOptionByItemId.value[item.id]!
 }
 
-async function loadStoreSummaries() {
-  if (!selectedListId.value) {
-    storeSummaries.value = []
-    return
+function loadStoreSummaries() {
+  const items = selectedList.value?.items ?? []
+
+  const storeMap = new Map<string, ShoppingListStoreSummary>()
+
+  for (const item of items) {
+    const cheapestOptionByStore = new Map<string, ShoppingItemPriceOption>()
+
+    for (const option of item.priceOptions.filter((entry) => entry.isAvailable && entry.totalPrice != null)) {
+      const existing = cheapestOptionByStore.get(option.storeName)
+
+      if (!existing || option.totalPrice < existing.totalPrice) {
+        cheapestOptionByStore.set(option.storeName, option)
+      }
+    }
+
+    for (const option of cheapestOptionByStore.values()) {
+      const current = storeMap.get(option.storeName) ?? {
+        storeName: option.storeName,
+        totalEstimatedPrice: 0,
+        coveredItemsCount: 0,
+        totalItemsCount: items.length,
+        isComplete: false,
+        isBestOption: false,
+      }
+
+      current.totalEstimatedPrice += option.totalPrice
+      current.coveredItemsCount += 1
+      storeMap.set(option.storeName, current)
+    }
   }
 
-  try {
-    storeSummaries.value = await apiFetch<ShoppingListStoreSummary[]>(
-      `/shoppinglists/${selectedListId.value}/store-summaries`,
-    )
-  } catch (err) {
-    console.error(err)
-    storeSummaries.value = []
+  const summaries = Array.from(storeMap.values())
+    .map((summary) => ({
+      ...summary,
+      isComplete: summary.coveredItemsCount === summary.totalItemsCount && summary.totalItemsCount > 0,
+    }))
+    .sort((left, right) => {
+      if (left.isComplete !== right.isComplete) {
+        return left.isComplete ? -1 : 1
+      }
+
+      return left.totalEstimatedPrice - right.totalEstimatedPrice
+    })
+
+  if (summaries.length > 0) {
+    summaries[0]!.isBestOption = summaries[0]!.isComplete || summaries.length === 1
   }
+
+  storeSummaries.value = summaries
 }
 
 async function loadData() {
@@ -248,7 +369,7 @@ async function loadData() {
     }
 
     if (selectedListId.value) {
-      await loadStoreSummaries()
+      loadStoreSummaries()
     } else {
       storeSummaries.value = []
     }
@@ -346,6 +467,10 @@ async function createItem() {
   error.value = ''
   success.value = ''
 
+  const catalogEstimate = newItem.value.catalogItemId
+    ? getCatalogEstimate(newItem.value.catalogItemId, Number(newItem.value.quantity))
+    : null
+
   try {
     await apiFetch<ShoppingItem>(`/shoppinglists/${selectedListId.value}/items`, {
       method: 'POST',
@@ -355,8 +480,8 @@ async function createItem() {
         inventoryQuantityUsed: Number(newItem.value.inventoryQuantityUsed),
         quantity: Number(newItem.value.quantity),
         purchasedQuantity: Number(newItem.value.purchasedQuantity),
-        estimatedUnitPrice: null,
-        estimatedTotalPrice: null,
+        estimatedUnitPrice: catalogEstimate?.estimatedUnitPrice ?? null,
+        estimatedTotalPrice: catalogEstimate?.estimatedTotalPrice ?? null,
         actualTotalPrice: null,
         catalogItemId: newItem.value.catalogItemId || null,
       }),
@@ -821,9 +946,26 @@ onMounted(loadData)
                   {{ catalogItem.name }}
                 </option>
               </select>
-              <input v-model="newItem.name" type="text" placeholder="Name" required />
+              <input
+                v-model="newItem.name"
+                list="shopping-catalog-name-suggestions"
+                type="text"
+                placeholder="Name"
+                required
+                @change="applyCatalogNameSuggestion"
+              />
               <input v-model="newItem.requiredQuantity" type="number" min="0" step="0.01" placeholder="Benötigt" required />
               <input v-model="newItem.unit" type="text" placeholder="Einheit" required />
+            </div>
+            <datalist id="shopping-catalog-name-suggestions">
+              <option v-for="catalogItem in catalogNameSuggestions" :key="catalogItem.id" :value="catalogItem.name">
+                {{ catalogItem.defaultUnit }}
+              </option>
+            </datalist>
+            <div v-if="selectedCatalogEstimate" class="catalog-price-hint">
+              <span>Vorschlag aus Katalog:</span>
+              <strong>{{ selectedCatalogEstimate.storeName }}</strong>
+              <span>· {{ formatMoney(selectedCatalogEstimate.estimatedTotalPrice) }}</span>
             </div>
             <div class="form-actions">
               <button class="btn-add" type="submit">Artikel hinzufügen</button>
@@ -1399,10 +1541,35 @@ textarea {
 }
 
 .grocery-sheet {
+  position: relative;
   background:
-    linear-gradient(to bottom, rgba(99,102,241,0.03), rgba(99,102,241,0.01)),
-    repeating-linear-gradient(to bottom, transparent 0, transparent 35px, rgba(59,130,246,0.08) 36px);
-  border: 1px solid rgba(99,102,241,0.16);
+    radial-gradient(circle at top left, rgba(239, 68, 68, 0.08), transparent 18%),
+    linear-gradient(to bottom, rgba(255,255,255,0.98), rgba(249,244,230,0.98)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 36px, rgba(74, 144, 226, 0.14) 37px, transparent 38px);
+  border: 1px solid rgba(120, 93, 51, 0.16);
+  box-shadow:
+    0 24px 60px rgba(64, 43, 10, 0.12),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+}
+
+.grocery-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 36px;
+  width: 2px;
+  background: rgba(220, 38, 38, 0.18);
+  pointer-events: none;
+}
+
+.grocery-sheet::after {
+  content: 'Einkaufszettel';
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  color: rgba(120, 93, 51, 0.55);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .sheet-header {
@@ -1420,9 +1587,9 @@ textarea {
 }
 
 .note-pill {
-  background: rgba(255,255,255,0.8);
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  background: rgba(255,252,245,0.96);
+  border: 1px dashed rgba(120, 93, 51, 0.24);
+  border-radius: 12px;
   padding: 10px 14px;
   display: inline-flex;
   gap: 10px;
@@ -1439,14 +1606,30 @@ textarea {
 }
 
 .grocery-row {
-  background: rgba(255,255,255,0.76);
-  border: 1px solid rgba(99,102,241,0.12);
-  border-radius: 18px;
-  padding: 16px;
+  position: relative;
+  margin-left: 26px;
+  background: rgba(255,252,245,0.94);
+  border: 1px solid rgba(120, 93, 51, 0.14);
+  border-radius: 10px;
+  padding: 14px 16px 14px 18px;
+  box-shadow: 0 8px 20px rgba(64, 43, 10, 0.08);
+}
+
+.grocery-row::before {
+  content: '';
+  position: absolute;
+  left: -22px;
+  top: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.20);
+  border: 1px solid rgba(99,102,241,0.25);
 }
 
 .grocery-row.checked {
-  opacity: 0.72;
+  opacity: 0.75;
+  filter: saturate(0.75);
 }
 
 .grocery-main {
@@ -1460,10 +1643,11 @@ textarea {
 }
 
 .grocery-name {
-  font-size: 19px;
-  font-weight: 800;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--text);
   margin-bottom: 4px;
+  font-family: "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
 }
 
 .grocery-meta,
@@ -1484,10 +1668,24 @@ textarea {
 .price-board,
 .store-compare {
   margin-top: 14px;
-  background: rgba(255,255,255,0.72);
-  border: 1px solid var(--border);
+  background: rgba(255,250,240,0.88);
+  border: 1px dashed rgba(120, 93, 51, 0.24);
   border-radius: 14px;
   padding: 14px;
+}
+
+.catalog-price-hint {
+  margin-top: 12px;
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px dashed rgba(245, 158, 11, 0.24);
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .complete-budget-box {
