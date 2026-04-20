@@ -155,6 +155,8 @@ function displaySource(sourceType: string) {
   switch (sourceType) {
     case 'MealPlanWeek':
       return 'Wochenplan'
+    case 'MealPlanUpcoming':
+      return 'Mealplanung'
     case 'Recipe':
       return 'Rezept'
     case 'Manual':

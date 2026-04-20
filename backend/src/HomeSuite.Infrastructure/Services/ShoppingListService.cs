@@ -10,10 +10,14 @@ namespace HomeSuite.Infrastructure.Services;
 public class ShoppingListService : IShoppingListService
 {
     private readonly HomeSuiteDbContext _dbContext;
+    private readonly UpcomingMealPlanShoppingListSyncService _shoppingListSyncService;
 
-    public ShoppingListService(HomeSuiteDbContext dbContext)
+    public ShoppingListService(
+        HomeSuiteDbContext dbContext,
+        UpcomingMealPlanShoppingListSyncService shoppingListSyncService)
     {
         _dbContext = dbContext;
+        _shoppingListSyncService = shoppingListSyncService;
     }
 
     public async Task<List<ShoppingListDto>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -191,6 +195,7 @@ public class ShoppingListService : IShoppingListService
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
         return true;
     }
 

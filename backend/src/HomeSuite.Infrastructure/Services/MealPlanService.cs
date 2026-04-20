@@ -8,7 +8,6 @@ namespace HomeSuite.Infrastructure.Services;
 
 public class MealPlanService : IMealPlanService
 {   
-
 private static string BuildIngredientKey(string name, string unit)
 {
     return $"{name.Trim().ToLowerInvariant()}|{unit.Trim().ToLowerInvariant()}";
@@ -24,6 +23,8 @@ private sealed class AggregatedRequirement
 
   public async Task<List<MealPlanDto>> GetByMonthAsync(int year, int month, CancellationToken cancellationToken = default)
 {
+    await _shoppingListSyncService.SyncAsync(cancellationToken);
+
     var start = new DateOnly(year, month, 1);
     var end = start.AddMonths(1);
 
@@ -48,6 +49,8 @@ private sealed class AggregatedRequirement
 
 public async Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationToken cancellationToken = default)
 {
+    await _shoppingListSyncService.SyncAsync(cancellationToken);
+
     return await _dbContext.MealPlans
         .Include(x => x.Recipe)
         .Where(x => x.Date == date)
@@ -144,14 +147,20 @@ public async Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationT
 
 
     private readonly HomeSuiteDbContext _dbContext;
+    private readonly UpcomingMealPlanShoppingListSyncService _shoppingListSyncService;
 
-    public MealPlanService(HomeSuiteDbContext dbContext)
+    public MealPlanService(
+        HomeSuiteDbContext dbContext,
+        UpcomingMealPlanShoppingListSyncService shoppingListSyncService)
     {
         _dbContext = dbContext;
+        _shoppingListSyncService = shoppingListSyncService;
     }
 
     public async Task<List<MealPlanDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
+
         return await _dbContext.MealPlans
             .Include(x => x.Recipe)
             .OrderBy(x => x.Date)
@@ -213,6 +222,7 @@ public async Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationT
 
         _dbContext.MealPlans.Add(mealPlan);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
 
         return new MealPlanDto
         {
@@ -254,6 +264,7 @@ public async Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationT
         mealPlan.RecipeId = request.RecipeId;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
 
         return new MealPlanDto
         {
@@ -280,6 +291,7 @@ public async Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationT
 
         _dbContext.MealPlans.Remove(mealPlan);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
 
         return true;
     }
@@ -335,6 +347,7 @@ public async Task<List<MealPlanDto>> GetByDateAsync(DateOnly date, CancellationT
         mealPlan.IsCompleted = true;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
     }
 
     private static string ValidateAndNormalize(string mealType, int servings, Guid recipeId)

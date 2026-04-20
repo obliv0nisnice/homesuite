@@ -19,9 +19,6 @@
         <RouterLink to="/recipes" class="nav-item" active-class="active">
           <span class="nav-icon">🍳</span> Rezepte
         </RouterLink>
-        <RouterLink to="/meal-planner" class="nav-item" active-class="active">
-          <span class="nav-icon">📅</span> Meal Planner
-        </RouterLink>
         <RouterLink to="/inventory" class="nav-item" active-class="active">
           <span class="nav-icon">📦</span> Inventar
         </RouterLink>

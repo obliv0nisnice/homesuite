@@ -9,10 +9,14 @@ namespace HomeSuite.Infrastructure.Services;
 public class InventoryService : IInventoryService
 {
     private readonly HomeSuiteDbContext _dbContext;
+    private readonly UpcomingMealPlanShoppingListSyncService _shoppingListSyncService;
 
-    public InventoryService(HomeSuiteDbContext dbContext)
+    public InventoryService(
+        HomeSuiteDbContext dbContext,
+        UpcomingMealPlanShoppingListSyncService shoppingListSyncService)
     {
         _dbContext = dbContext;
+        _shoppingListSyncService = shoppingListSyncService;
     }
 
     public async Task<List<InventoryItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -59,6 +63,7 @@ public class InventoryService : IInventoryService
 
         _dbContext.InventoryItems.Add(item);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
 
         return new InventoryItemDto
         {
@@ -88,6 +93,7 @@ public class InventoryService : IInventoryService
         item.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
 
         return new InventoryItemDto
         {
@@ -111,6 +117,7 @@ public class InventoryService : IInventoryService
 
         _dbContext.InventoryItems.Remove(item);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await _shoppingListSyncService.SyncAsync(cancellationToken);
 
         return true;
     }

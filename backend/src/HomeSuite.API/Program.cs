@@ -15,6 +15,7 @@ builder.Services.AddDbContext<HomeSuiteDbContext>(options =>
 
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
+builder.Services.AddScoped<UpcomingMealPlanShoppingListSyncService>();
 builder.Services.AddScoped<IShoppingListService, ShoppingListService>();
 builder.Services.AddScoped<IRecipeService, RecipeService>();
 builder.Services.AddScoped<IMealPlanService, MealPlanService>();

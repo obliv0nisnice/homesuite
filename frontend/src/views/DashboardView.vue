@@ -133,8 +133,20 @@
                   <strong>{{ meal.mealType }} · {{ meal.recipeName || 'Rezept' }}</strong>
                   <span class="item-time">{{ meal.servings }} Portion(en)</span>
                 </div>
+                <div v-if="meal.isCompleted" class="subscription-chip">
+                  ✅ Erledigt
+                </div>
                 <div v-if="meal.notes" class="item-notes">{{ meal.notes }}</div>
-                <button class="btn-delete" @click="deleteMeal(meal.id)">Löschen</button>
+                <div class="item-actions">
+                  <button
+                    v-if="!meal.isCompleted"
+                    class="btn-save btn-inline"
+                    @click="completeMeal(meal.id)"
+                  >
+                    Als gekocht markieren
+                  </button>
+                  <button class="btn-delete" @click="deleteMeal(meal.id)">Löschen</button>
+                </div>
               </div>
             </div>
           </div>
@@ -754,6 +766,23 @@ async function deleteMeal(id: string) {
   await loadMonthData()
 }
 
+async function completeMeal(id: string) {
+  error.value = ''
+  success.value = ''
+
+  try {
+    await apiFetch(`/MealPlans/${id}/complete`, {
+      method: 'POST',
+    })
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Meal konnte nicht abgeschlossen werden.'
+    return
+  }
+
+  success.value = 'Meal als erledigt markiert und Inventar aktualisiert.'
+  await loadMonthData()
+}
+
 function goToPreviousMonth() {
   if (currentMonth.value === 1) {
     currentMonth.value = 12
@@ -1148,6 +1177,19 @@ onMounted(async () => {
   font-weight: 700;
   background: rgba(99,102,241,0.12);
   color: var(--primary);
+}
+
+.item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-inline {
+  align-self: flex-end;
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .btn-delete {
