@@ -1,0 +1,148 @@
+src
+├── HomeSuite.API
+│   ├── BackgroundServices
+│   │   ├── CatalogPriceRefreshWorker.cs
+│   │   └── RecurringTransactionWorker.cs
+│   ├── Controllers
+│   │   ├── CalendarEventsController.cs
+│   │   ├── CatalogController.cs
+│   │   ├── CategoriesController.cs
+│   │   ├── InventoryController.cs
+│   │   ├── MealPlansController.cs
+│   │   ├── RecipesController.cs
+│   │   ├── ShoppingListsController.cs
+│   │   └── TransactionsController.cs
+│   ├── Properties
+│   │   └── launchSettings.json
+│   ├── appsettings.json
+│   ├── HomeSuite.API.csproj
+│   ├── HomeSuite.API.http
+│   └── Program.cs
+├── HomeSuite.Application
+│   ├── DTOs
+│   │   ├── Calendar
+│   │   │   ├── CalendarEventDto.cs
+│   │   │   ├── CreateCalendarEventRequest.cs
+│   │   │   └── UpdateCalendarEventRequest.cs
+│   │   ├── Catalog
+│   │   │   ├── CatalogItemDto.cs
+│   │   │   ├── CatalogItemPriceDto.cs
+│   │   │   ├── CreateCatalogItemRequest.cs
+│   │   │   └── UpdateCatalogItemRequest.cs
+│   │   ├── Categories
+│   │   │   ├── CategoryDto.cs
+│   │   │   ├── CreateCategoryRequest.cs
+│   │   │   └── UpdateCategoryRequest.cs
+│   │   ├── Inventory
+│   │   │   ├── CreateInventoryItemRequest.cs
+│   │   │   ├── InventoryItemDto.cs
+│   │   │   └── UpdateInventoryItemRequest.cs
+│   │   ├── MealPlans
+│   │   │   ├── CreateMealPlanRequest.cs
+│   │   │   ├── MealPlanDto.cs
+│   │   │   ├── MealPlanWeekIngredientDto.cs
+│   │   │   ├── MealPlanWeekSummaryDto.cs
+│   │   │   └── UpdateMealPlanRequest.cs
+│   │   ├── Recipes
+│   │   │   ├── CreateRecipeIngredientRequest.cs
+│   │   │   ├── CreateRecipeRequest.cs
+│   │   │   ├── RecipeDto.cs
+│   │   │   ├── RecipeIngredientDto.cs
+│   │   │   ├── UpdateRecipeIngredientRequest.cs
+│   │   │   └── UpdateRecipeRequest.cs
+│   │   ├── ShoppingLists
+│   │   │   ├── CompleteShoppingListRequest.cs
+│   │   │   ├── CreateShoppingItemPriceOptionRequest.cs
+│   │   │   ├── CreateShoppingItemRequest.cs
+│   │   │   ├── CreateShoppingListRequest.cs
+│   │   │   ├── ShoppingItemDto.cs
+│   │   │   ├── ShoppingItemPriceOptionDto.cs
+│   │   │   ├── ShoppingListDto.cs
+│   │   │   ├── ShoppingListStoreSummaryDto.cs
+│   │   │   ├── UpdateShoppingItemPriceOptionRequest.cs
+│   │   │   ├── UpdateShoppingItemRequest.cs
+│   │   │   └── UpdateShoppingListRequest.cs
+│   │   └── Transactions
+│   │       ├── CreateTransactionRequest.cs
+│   │       ├── TransactionDto.cs
+│   │       └── UpdateTransactionRequest.cs
+│   ├── Interfaces
+│   │   ├── ICalendarEventService.cs
+│   │   ├── ICatalogPriceCrawlerService.cs
+│   │   ├── ICatalogService.cs
+│   │   ├── ICategoryService.cs
+│   │   ├── IInventoryService.cs
+│   │   ├── IMealPlanService.cs
+│   │   ├── IPriceCrawlerSource.cs
+│   │   ├── IRecipeService.cs
+│   │   ├── IShoppingListService.cs
+│   │   └── ITransactionService.cs
+│   └── HomeSuite.Application.csproj
+├── HomeSuite.Domain
+│   ├── Entities
+│   │   ├── CalendarEvent.cs
+│   │   ├── CatalogItem.cs
+│   │   ├── CatalogItemPrice.cs
+│   │   ├── Category.cs
+│   │   ├── InventoryItem.cs
+│   │   ├── MealPlan.cs
+│   │   ├── Recipe.cs
+│   │   ├── RecipeIngredient.cs
+│   │   ├── ShoppingItem.cs
+│   │   ├── ShoppingItemPriceOption.cs
+│   │   ├── ShoppingList.cs
+│   │   └── Transaction.cs
+│   ├── Class1.cs
+│   └── HomeSuite.Domain.csproj
+└── HomeSuite.Infrastructure
+    ├── Persistence
+    │   ├── Migrations
+    │   │   ├── 20260413182902_InitialCreate.cs
+    │   │   ├── 20260413182902_InitialCreate.Designer.cs
+    │   │   ├── 20260413193730_AddShoppingLists.cs
+    │   │   ├── 20260413193730_AddShoppingLists.Designer.cs
+    │   │   ├── 20260413194822_AddRecipes.cs
+    │   │   ├── 20260413194822_AddRecipes.Designer.cs
+    │   │   ├── 20260413200344_AddMealPlans.cs
+    │   │   ├── 20260413200344_AddMealPlans.Designer.cs
+    │   │   ├── 20260415115739_AddRecipeBaseServings.cs
+    │   │   ├── 20260415115739_AddRecipeBaseServings.Designer.cs
+    │   │   ├── 20260415120418_AddInventory.cs
+    │   │   ├── 20260415120418_AddInventory.Designer.cs
+    │   │   ├── 20260415121546_AddMealPlanCompletion.cs
+    │   │   ├── 20260415121546_AddMealPlanCompletion.Designer.cs
+    │   │   ├── 20260415123601_AddPurchasedQuantityToShoppingItems.cs
+    │   │   ├── 20260415123601_AddPurchasedQuantityToShoppingItems.Designer.cs
+    │   │   ├── 20260415140629_FinalizeShoppingItemModel.cs
+    │   │   ├── 20260415140629_FinalizeShoppingItemModel.Designer.cs
+    │   │   ├── 20260415180418_AddCatalogItems.cs
+    │   │   ├── 20260415180418_AddCatalogItems.Designer.cs
+    │   │   ├── 20260415181523_LinkShoppingItemsToCatalog.cs
+    │   │   ├── 20260415181523_LinkShoppingItemsToCatalog.Designer.cs
+    │   │   ├── 20260415195452_AddShoppingItemPriceOptions.cs
+    │   │   ├── 20260415195452_AddShoppingItemPriceOptions.Designer.cs
+    │   │   ├── 20260416125232_AddCatalogItemPrices.cs
+    │   │   ├── 20260416125232_AddCatalogItemPrices.Designer.cs
+    │   │   ├── 20260416130422_AddCatalogItemPrice.cs
+    │   │   ├── 20260416130422_AddCatalogItemPrice.Designer.cs
+    │   │   ├── 20260416152904_AddCalendar.cs
+    │   │   ├── 20260416152904_AddCalendar.Designer.cs
+    │   │   ├── 20260417200900_InitialPostgres.cs
+    │   │   ├── 20260417200900_InitialPostgres.Designer.cs
+    │   │   ├── 20260418201402_AddNextDueDateToTransactions.cs
+    │   │   ├── 20260418201402_AddNextDueDateToTransactions.Designer.cs
+    │   │   └── HomeSuiteDbContextModelSnapshot.cs
+    │   └── HomeSuiteDbContext.cs
+    ├── Services
+    │   ├── BillaPriceCrawlerSource.cs
+    │   ├── CalendarEventService.cs
+    │   ├── CatalogPriceCrawlerService.cs
+    │   ├── CatalogService.cs
+    │   ├── CategoryService.cs
+    │   ├── InventoryService.cs
+    │   ├── MealPlanService.cs
+    │   ├── RecipeService.cs
+    │   ├── ShoppingListService.cs
+    │   ├── SparPriceCrawlerSource.cs
+    │   └── TransactionService.cs
+    └── HomeSuite.Infrastructure.csproj

@@ -2,7 +2,7 @@
   <div :class="['app-wrapper', { 'dark-mode': isDark }]">
     <nav class="top-navbar">
       <div class="nav-brand">
-        <span class="brand-icon">🏠</span>
+        <img src="/homesuite.png" alt="HomeSuite Logo" class="brand-logo" />
         <span class="brand-name">HomeSuite</span>
       </div>
 
@@ -65,6 +65,23 @@ function toggleDark() {
 </script>
 
 <style>
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.brand-name {
+  font-weight: 600;
+  font-size: 1.2rem;
+}
 :root {
   --bg: #f0f4f8;
   --surface: #ffffff;
