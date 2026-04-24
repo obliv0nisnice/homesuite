@@ -69,21 +69,26 @@ const selectedRecipe = computed(() =>
   recipes.value.find((x) => x.id === selectedRecipeId.value) ?? null,
 )
 
-const newIngredientSuggestions = computed(() => {
-  const query = newIngredient.value.name.trim().toLowerCase()
+function getCatalogSuggestions(query: string) {
+  const normalizedQuery = query.trim().toLowerCase()
 
   return catalogItems.value
-    .filter((item) => !query || item.name.toLowerCase().includes(query))
-    .slice(0, 8)
-})
+    .filter((item) => !normalizedQuery || item.name.toLowerCase().includes(normalizedQuery))
+    .sort((left, right) => {
+      const leftStartsWith = left.name.toLowerCase().startsWith(normalizedQuery)
+      const rightStartsWith = right.name.toLowerCase().startsWith(normalizedQuery)
 
-const editIngredientSuggestions = computed(() => {
-  const query = editIngredient.value.name.trim().toLowerCase()
+      if (leftStartsWith !== rightStartsWith) {
+        return leftStartsWith ? -1 : 1
+      }
 
-  return catalogItems.value
-    .filter((item) => !query || item.name.toLowerCase().includes(query))
+      return left.name.localeCompare(right.name, 'de')
+    })
     .slice(0, 8)
-})
+}
+
+const newIngredientSuggestions = computed(() => getCatalogSuggestions(newIngredient.value.name))
+const editIngredientSuggestions = computed(() => getCatalogSuggestions(editIngredient.value.name))
 
 function applyCatalogSuggestion(target: { name: string; unit: string }) {
   const matchingCatalogItem = catalogItems.value.find(
@@ -484,7 +489,7 @@ onMounted(loadData)
               type="text"
               placeholder="Zutat"
               required
-              @change="applyCatalogSuggestion(newIngredient)"
+              @input="applyCatalogSuggestion(newIngredient)"
             />
             <input v-model="newIngredient.quantity" type="number" min="0" step="0.01" placeholder="Menge" required />
             <input v-model="newIngredient.unit" type="text" placeholder="Einheit" required />
@@ -495,9 +500,12 @@ onMounted(loadData)
         </form>
       </div>
       <datalist id="recipe-ingredient-suggestions">
-        <option v-for="item in newIngredientSuggestions" :key="item.id" :value="item.name">
-          {{ item.defaultUnit }}
-        </option>
+        <option
+          v-for="item in newIngredientSuggestions"
+          :key="item.id"
+          :value="item.name"
+          :label="`${item.name} · ${item.defaultUnit}`"
+        />
       </datalist>
 
       <table v-if="selectedRecipe.ingredients.length > 0" class="data-table" style="margin-top: 18px;">
@@ -517,7 +525,7 @@ onMounted(loadData)
                   v-model="editIngredient.name"
                   list="recipe-edit-ingredient-suggestions"
                   type="text"
-                  @change="applyCatalogSuggestion(editIngredient)"
+                  @input="applyCatalogSuggestion(editIngredient)"
                 />
               </td>
               <td><input v-model="editIngredient.quantity" type="number" min="0" step="0.01" /></td>
@@ -543,9 +551,12 @@ onMounted(loadData)
 
       <div v-else class="empty-state" style="margin-top: 18px;">Dieses Rezept enthält noch keine Zutaten.</div>
       <datalist id="recipe-edit-ingredient-suggestions">
-        <option v-for="item in editIngredientSuggestions" :key="item.id" :value="item.name">
-          {{ item.defaultUnit }}
-        </option>
+        <option
+          v-for="item in editIngredientSuggestions"
+          :key="item.id"
+          :value="item.name"
+          :label="`${item.name} · ${item.defaultUnit}`"
+        />
       </datalist>
     </div>
   </div>

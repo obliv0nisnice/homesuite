@@ -80,6 +80,162 @@ public class ShoppingListService : IShoppingListService
         return await GetByIdAsync(shoppingList.Id, cancellationToken);
     }
 
+    public async Task<ShoppingItemDto> AddItemAsync(Guid shoppingListId, CreateShoppingItemRequest request, CancellationToken cancellationToken = default)
+    {
+        var shoppingListExists = await _dbContext.ShoppingLists
+            .AnyAsync(x => x.Id == shoppingListId, cancellationToken);
+
+        if (!shoppingListExists)
+        {
+            throw new InvalidOperationException("Einkaufsliste nicht gefunden.");
+        }
+
+        var item = CreateItemEntity(request);
+        item.ShoppingListId = shoppingListId;
+
+        _dbContext.ShoppingItems.Add(item);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await GetShoppingItemAsync(item.Id, cancellationToken)
+            ?? throw new InvalidOperationException("Einkaufsposten konnte nicht geladen werden.");
+    }
+
+    public async Task<ShoppingItemDto?> UpdateItemAsync(Guid shoppingListId, Guid itemId, UpdateShoppingItemRequest request, CancellationToken cancellationToken = default)
+    {
+        ValidateShoppingItem(request.Name, request.Quantity);
+
+        var item = await _dbContext.ShoppingItems
+            .FirstOrDefaultAsync(x => x.Id == itemId && x.ShoppingListId == shoppingListId, cancellationToken);
+
+        if (item is null)
+        {
+            return null;
+        }
+
+        item.Name = request.Name.Trim();
+        item.RequiredQuantity = request.RequiredQuantity;
+        item.InventoryQuantityUsed = request.InventoryQuantityUsed;
+        item.Quantity = request.Quantity;
+        item.PurchasedQuantity = request.PurchasedQuantity;
+        item.Unit = string.IsNullOrWhiteSpace(request.Unit) ? "Stk" : request.Unit.Trim();
+        item.IsChecked = request.IsChecked;
+        item.EstimatedUnitPrice = request.EstimatedUnitPrice;
+        item.EstimatedTotalPrice = request.EstimatedTotalPrice;
+        item.ActualTotalPrice = request.ActualTotalPrice;
+        item.SourceType = string.IsNullOrWhiteSpace(request.SourceType) ? "Manual" : request.SourceType.Trim();
+        item.CatalogItemId = request.CatalogItemId;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await GetShoppingItemAsync(item.Id, cancellationToken);
+    }
+
+    public async Task<bool> DeleteItemAsync(Guid shoppingListId, Guid itemId, CancellationToken cancellationToken = default)
+    {
+        var item = await _dbContext.ShoppingItems
+            .FirstOrDefaultAsync(x => x.Id == itemId && x.ShoppingListId == shoppingListId, cancellationToken);
+
+        if (item is null)
+        {
+            return false;
+        }
+
+        _dbContext.ShoppingItems.Remove(item);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<ShoppingItemPriceOptionDto> AddPriceOptionAsync(
+        Guid shoppingListId,
+        Guid itemId,
+        CreateShoppingItemPriceOptionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var item = await _dbContext.ShoppingItems
+            .FirstOrDefaultAsync(x => x.Id == itemId && x.ShoppingListId == shoppingListId, cancellationToken);
+
+        if (item is null)
+        {
+            throw new InvalidOperationException("Einkaufsposten nicht gefunden.");
+        }
+
+        ValidatePriceOption(request.StoreName, request.ProductName, request.UnitPrice, request.TotalPrice);
+
+        var priceOption = new ShoppingItemPriceOption
+        {
+            ShoppingItemId = itemId,
+            StoreName = request.StoreName.Trim(),
+            ProductName = request.ProductName.Trim(),
+            UnitPrice = request.UnitPrice,
+            TotalPrice = request.TotalPrice,
+            ProductUrl = string.IsNullOrWhiteSpace(request.ProductUrl) ? null : request.ProductUrl.Trim(),
+            IsAvailable = request.IsAvailable,
+            CheckedAt = request.CheckedAt ?? DateTime.UtcNow
+        };
+
+        _dbContext.ShoppingItemPriceOptions.Add(priceOption);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return MapPriceOption(priceOption);
+    }
+
+    public async Task<ShoppingItemPriceOptionDto?> UpdatePriceOptionAsync(
+        Guid shoppingListId,
+        Guid itemId,
+        Guid priceOptionId,
+        UpdateShoppingItemPriceOptionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ValidatePriceOption(request.StoreName, request.ProductName, request.UnitPrice, request.TotalPrice);
+
+        var priceOption = await _dbContext.ShoppingItemPriceOptions
+            .Include(x => x.ShoppingItem)
+            .FirstOrDefaultAsync(
+                x => x.Id == priceOptionId &&
+                     x.ShoppingItemId == itemId &&
+                     x.ShoppingItem != null &&
+                     x.ShoppingItem.ShoppingListId == shoppingListId,
+                cancellationToken);
+
+        if (priceOption is null)
+        {
+            return null;
+        }
+
+        priceOption.StoreName = request.StoreName.Trim();
+        priceOption.ProductName = request.ProductName.Trim();
+        priceOption.UnitPrice = request.UnitPrice;
+        priceOption.TotalPrice = request.TotalPrice;
+        priceOption.ProductUrl = string.IsNullOrWhiteSpace(request.ProductUrl) ? null : request.ProductUrl.Trim();
+        priceOption.IsAvailable = request.IsAvailable;
+        priceOption.CheckedAt = request.CheckedAt ?? priceOption.CheckedAt;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return MapPriceOption(priceOption);
+    }
+
+    public async Task<bool> DeletePriceOptionAsync(Guid shoppingListId, Guid itemId, Guid priceOptionId, CancellationToken cancellationToken = default)
+    {
+        var priceOption = await _dbContext.ShoppingItemPriceOptions
+            .Include(x => x.ShoppingItem)
+            .FirstOrDefaultAsync(
+                x => x.Id == priceOptionId &&
+                     x.ShoppingItemId == itemId &&
+                     x.ShoppingItem != null &&
+                     x.ShoppingItem.ShoppingListId == shoppingListId,
+                cancellationToken);
+
+        if (priceOption is null)
+        {
+            return false;
+        }
+
+        _dbContext.ShoppingItemPriceOptions.Remove(priceOption);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var shoppingList = await _dbContext.ShoppingLists
@@ -207,17 +363,51 @@ public class ShoppingListService : IShoppingListService
         }
     }
 
+    private async Task<ShoppingItemDto?> GetShoppingItemAsync(Guid itemId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.ShoppingItems
+            .Include(x => x.PriceOptions)
+            .Include(x => x.CatalogItem)
+            .Where(x => x.Id == itemId)
+            .Select(i => new ShoppingItemDto
+            {
+                Id = i.Id,
+                Name = i.Name,
+                RequiredQuantity = i.RequiredQuantity,
+                InventoryQuantityUsed = i.InventoryQuantityUsed,
+                Quantity = i.Quantity,
+                PurchasedQuantity = i.PurchasedQuantity,
+                Unit = i.Unit,
+                IsChecked = i.IsChecked,
+                EstimatedUnitPrice = i.EstimatedUnitPrice,
+                EstimatedTotalPrice = i.EstimatedTotalPrice,
+                ActualTotalPrice = i.ActualTotalPrice,
+                SourceType = i.SourceType,
+                CatalogItemId = i.CatalogItemId,
+                CatalogItemName = i.CatalogItem != null ? i.CatalogItem.Name : null,
+                PriceOptions = i.PriceOptions
+                    .OrderBy(p => p.TotalPrice)
+                    .Select(p => new ShoppingItemPriceOptionDto
+                    {
+                        Id = p.Id,
+                        StoreName = p.StoreName,
+                        ProductName = p.ProductName,
+                        UnitPrice = p.UnitPrice,
+                        TotalPrice = p.TotalPrice,
+                        ProductUrl = p.ProductUrl,
+                        IsAvailable = p.IsAvailable,
+                        CheckedAt = p.CheckedAt,
+                        ShoppingItemId = p.ShoppingItemId
+                    })
+                    .ToList(),
+                ShoppingListId = i.ShoppingListId
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     private static ShoppingItem CreateItemEntity(CreateShoppingItemRequest item)
     {
-        if (string.IsNullOrWhiteSpace(item.Name))
-        {
-            throw new ArgumentException("Jeder Einkaufsposten benötigt einen Namen.");
-        }
-
-        if (item.Quantity < 0)
-        {
-            throw new ArgumentException("Die Menge eines Einkaufspostens darf nicht negativ sein.");
-        }
+        ValidateShoppingItem(item.Name, item.Quantity);
 
         return new ShoppingItem
         {
@@ -233,6 +423,53 @@ public class ShoppingListService : IShoppingListService
             ActualTotalPrice = item.ActualTotalPrice,
             SourceType = string.IsNullOrWhiteSpace(item.SourceType) ? "Manual" : item.SourceType.Trim(),
             CatalogItemId = item.CatalogItemId
+        };
+    }
+
+    private static void ValidateShoppingItem(string name, decimal quantity)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Jeder Einkaufsposten benötigt einen Namen.");
+        }
+
+        if (quantity < 0)
+        {
+            throw new ArgumentException("Die Menge eines Einkaufspostens darf nicht negativ sein.");
+        }
+    }
+
+    private static void ValidatePriceOption(string storeName, string productName, decimal unitPrice, decimal totalPrice)
+    {
+        if (string.IsNullOrWhiteSpace(storeName))
+        {
+            throw new ArgumentException("Der Händler ist erforderlich.");
+        }
+
+        if (string.IsNullOrWhiteSpace(productName))
+        {
+            throw new ArgumentException("Der Produktname ist erforderlich.");
+        }
+
+        if (unitPrice < 0 || totalPrice < 0)
+        {
+            throw new ArgumentException("Preise dürfen nicht negativ sein.");
+        }
+    }
+
+    private static ShoppingItemPriceOptionDto MapPriceOption(ShoppingItemPriceOption priceOption)
+    {
+        return new ShoppingItemPriceOptionDto
+        {
+            Id = priceOption.Id,
+            ShoppingItemId = priceOption.ShoppingItemId,
+            StoreName = priceOption.StoreName,
+            ProductName = priceOption.ProductName,
+            UnitPrice = priceOption.UnitPrice,
+            TotalPrice = priceOption.TotalPrice,
+            ProductUrl = priceOption.ProductUrl,
+            IsAvailable = priceOption.IsAvailable,
+            CheckedAt = priceOption.CheckedAt
         };
     }
 

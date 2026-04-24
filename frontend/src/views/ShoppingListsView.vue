@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { apiFetch } from '@/services/api'
+import { readOfflineCache, saveOfflineCache } from '@/services/offlineCache'
+import {
+  enqueueOfflineMutation,
+  makeTempId,
+  readOfflineMutations,
+  writeOfflineMutations,
+} from '@/services/offlineMutations'
 
 type Category = {
   id: string
@@ -82,6 +89,99 @@ type ShoppingListStoreSummary = {
   isBestOption: boolean
 }
 
+type ShoppingItemPayload = {
+  name: string
+  requiredQuantity: number
+  inventoryQuantityUsed: number
+  quantity: number
+  purchasedQuantity: number
+  unit: string
+  isChecked: boolean
+  estimatedUnitPrice?: number | null
+  estimatedTotalPrice?: number | null
+  actualTotalPrice?: number | null
+  sourceType: string
+  catalogItemId?: string | null
+}
+
+type ShoppingListPayload = {
+  name: string
+}
+
+type PriceOptionPayload = {
+  storeName: string
+  productName: string
+  unitPrice: number
+  totalPrice: number
+  productUrl?: string | null
+  isAvailable: boolean
+}
+
+type CompleteListPayload = {
+  createBudgetExpense: boolean
+  expenseCategoryId: string | null
+  transactionTitle: string
+  transactionDate: string
+}
+
+type ShoppingMutation =
+  | {
+      type: 'createList'
+      shoppingListId: string
+      payload: ShoppingListPayload
+    }
+  | {
+      type: 'updateList'
+      shoppingListId: string
+      payload: ShoppingListPayload
+    }
+  | {
+      type: 'deleteList'
+      shoppingListId: string
+    }
+  | {
+      type: 'completeList'
+      shoppingListId: string
+      payload: CompleteListPayload
+    }
+  | {
+      type: 'createItem'
+      shoppingListId: string
+      itemId: string
+      payload: ShoppingItemPayload
+    }
+  | {
+      type: 'updateItem'
+      shoppingListId: string
+      itemId: string
+      payload: ShoppingItemPayload
+    }
+  | {
+      type: 'deleteItem'
+      shoppingListId: string
+      itemId: string
+    }
+  | {
+      type: 'createPriceOption'
+      shoppingListId: string
+      itemId: string
+      priceOptionId: string
+      payload: PriceOptionPayload
+    }
+  | {
+      type: 'updatePriceOption'
+      shoppingListId: string
+      itemId: string
+      priceOptionId: string
+      payload: PriceOptionPayload
+    }
+  | {
+      type: 'deletePriceOption'
+      shoppingListId: string
+      itemId: string
+      priceOptionId: string
+    }
+
 const catalogItems = ref<CatalogItem[]>([])
 const shoppingLists = ref<ShoppingList[]>([])
 const storeSummaries = ref<ShoppingListStoreSummary[]>([])
@@ -89,6 +189,10 @@ const selectedListId = ref<string>('')
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
+const offlineSnapshotAt = ref<string | null>(null)
+const pendingMutationCount = ref(0)
+const isOnline = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
+const isSyncing = ref(false)
 
 const newList = ref({
   name: '',
@@ -152,6 +256,10 @@ const selectedListTotals = computed(() => {
   }
 })
 
+const bestCompleteStoreSummary = computed(() =>
+  storeSummaries.value.find((summary) => summary.isBestOption && summary.isComplete) ?? null,
+)
+
 const expenseCategories = computed(() =>
   categories.value.filter((c) => c.type === 'Expense'),
 )
@@ -164,13 +272,697 @@ const selectedCatalogEstimate = computed(() => {
   return getCatalogEstimate(newItem.value.catalogItemId, Number(newItem.value.quantity))
 })
 
-const catalogNameSuggestions = computed(() => {
-  const query = newItem.value.name.trim().toLowerCase()
+const offlineSnapshotLabel = computed(() => {
+  if (!offlineSnapshotAt.value) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('de-AT', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(offlineSnapshotAt.value))
+})
+
+const pendingMutationLabel = computed(() =>
+  pendingMutationCount.value === 1
+    ? '1 lokale Offline-Aenderung wartet auf Sync.'
+    : `${pendingMutationCount.value} lokale Offline-Aenderungen warten auf Sync.`,
+)
+const syncStatusLabel = computed(() => {
+  if (isSyncing.value) {
+    return 'Synchronisiert'
+  }
+
+  if (!isOnline.value) {
+    return pendingMutationCount.value > 0 ? 'Offline · wartet' : 'Offline'
+  }
+
+  if (pendingMutationCount.value > 0) {
+    return 'Sync ausstehend'
+  }
+
+  return 'Online'
+})
+const syncStatusClass = computed(() => {
+  if (isSyncing.value) {
+    return 'sync-chip-syncing'
+  }
+
+  if (!isOnline.value) {
+    return pendingMutationCount.value > 0 ? 'sync-chip-pending' : 'sync-chip-offline'
+  }
+
+  if (pendingMutationCount.value > 0) {
+    return 'sync-chip-pending'
+  }
+
+  return 'sync-chip-online'
+})
+
+function isOfflineError(err: unknown) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return true
+  }
+
+  if (err instanceof TypeError) {
+    return true
+  }
+
+  return err instanceof Error && /fetch|network|offline|load/i.test(err.message)
+}
+
+function isTempId(id: string) {
+  return id.startsWith('offline-')
+}
+
+function readPendingMutations() {
+  return readOfflineMutations<ShoppingMutation>('shopping-lists')
+}
+
+function writePendingMutations(entries: ReturnType<typeof readPendingMutations>) {
+  writeOfflineMutations('shopping-lists', entries)
+  pendingMutationCount.value = entries.length
+}
+
+function refreshPendingMutationCount() {
+  pendingMutationCount.value = readPendingMutations().length
+}
+
+function persistShoppingSnapshot() {
+  saveOfflineCache('shopping-lists:view-data', {
+    catalogItems: catalogItems.value,
+    shoppingLists: shoppingLists.value,
+    categories: categories.value,
+  })
+}
+
+function sortShoppingListItems(list: ShoppingList) {
+  list.items.sort((left, right) => left.name.localeCompare(right.name, 'de'))
+}
+
+function refreshLocalShoppingState() {
+  if (selectedListId.value) {
+    loadStoreSummaries()
+  } else {
+    storeSummaries.value = []
+  }
+
+  persistShoppingSnapshot()
+}
+
+function getCatalogItemName(catalogItemId?: string | null) {
+  if (!catalogItemId) {
+    return null
+  }
+
+  return catalogItems.value.find((item) => item.id === catalogItemId)?.name ?? null
+}
+
+function applyLocalItemUpsert(shoppingListId: string, item: ShoppingItem) {
+  const list = shoppingLists.value.find((entry) => entry.id === shoppingListId)
+  if (!list) {
+    return
+  }
+
+  const existingIndex = list.items.findIndex((entry) => entry.id === item.id)
+  if (existingIndex >= 0) {
+    list.items.splice(existingIndex, 1, item)
+  } else {
+    list.items.push(item)
+  }
+
+  sortShoppingListItems(list)
+  refreshLocalShoppingState()
+}
+
+function applyLocalItemRemoval(shoppingListId: string, itemId: string) {
+  const list = shoppingLists.value.find((entry) => entry.id === shoppingListId)
+  if (!list) {
+    return
+  }
+
+  list.items = list.items.filter((entry) => entry.id !== itemId)
+  refreshLocalShoppingState()
+}
+
+function applyLocalListUpsert(list: ShoppingList) {
+  const existingIndex = shoppingLists.value.findIndex((entry) => entry.id === list.id)
+  if (existingIndex >= 0) {
+    shoppingLists.value.splice(existingIndex, 1, list)
+  } else {
+    shoppingLists.value.unshift(list)
+  }
+
+  shoppingLists.value.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  refreshLocalShoppingState()
+}
+
+function applyLocalListRemoval(listId: string) {
+  shoppingLists.value = shoppingLists.value.filter((entry) => entry.id !== listId)
+  if (selectedListId.value === listId) {
+    selectedListId.value = shoppingLists.value[0]?.id ?? ''
+  }
+
+  delete completeAsBudgetExpense.value[listId]
+  delete selectedExpenseCategoryId.value[listId]
+  refreshLocalShoppingState()
+}
+
+function applyLocalPriceOptionUpsert(shoppingListId: string, itemId: string, priceOption: ShoppingItemPriceOption) {
+  const item = shoppingLists.value
+    .find((list) => list.id === shoppingListId)
+    ?.items.find((entry) => entry.id === itemId)
+
+  if (!item) {
+    return
+  }
+
+  const existingIndex = item.priceOptions.findIndex((entry) => entry.id === priceOption.id)
+  if (existingIndex >= 0) {
+    item.priceOptions.splice(existingIndex, 1, priceOption)
+  } else {
+    item.priceOptions.push(priceOption)
+  }
+
+  item.priceOptions.sort((left, right) => left.totalPrice - right.totalPrice)
+  refreshLocalShoppingState()
+}
+
+function applyLocalPriceOptionRemoval(shoppingListId: string, itemId: string, priceOptionId: string) {
+  const item = shoppingLists.value
+    .find((list) => list.id === shoppingListId)
+    ?.items.find((entry) => entry.id === itemId)
+
+  if (!item) {
+    return
+  }
+
+  item.priceOptions = item.priceOptions.filter((entry) => entry.id !== priceOptionId)
+  refreshLocalShoppingState()
+}
+
+function buildCreateItemPayload(): ShoppingItemPayload {
+  const catalogEstimate = newItem.value.catalogItemId
+    ? getCatalogEstimate(newItem.value.catalogItemId, Number(newItem.value.quantity))
+    : null
+
+  return {
+    name: newItem.value.name.trim(),
+    requiredQuantity: Number(newItem.value.requiredQuantity),
+    inventoryQuantityUsed: Number(newItem.value.inventoryQuantityUsed),
+    quantity: Number(newItem.value.quantity),
+    purchasedQuantity: Number(newItem.value.purchasedQuantity),
+    unit: newItem.value.unit.trim() || 'Stk',
+    isChecked: false,
+    estimatedUnitPrice: catalogEstimate?.estimatedUnitPrice ?? null,
+    estimatedTotalPrice: catalogEstimate?.estimatedTotalPrice ?? null,
+    actualTotalPrice: null,
+    sourceType: newItem.value.sourceType,
+    catalogItemId: newItem.value.catalogItemId || null,
+  }
+}
+
+function buildUpdateItemPayload(item: ShoppingItem, overrides?: Partial<ShoppingItemPayload>): ShoppingItemPayload {
+  return {
+    name: overrides?.name ?? item.name,
+    requiredQuantity: overrides?.requiredQuantity ?? item.requiredQuantity,
+    inventoryQuantityUsed: overrides?.inventoryQuantityUsed ?? item.inventoryQuantityUsed,
+    quantity: overrides?.quantity ?? item.quantity,
+    purchasedQuantity: overrides?.purchasedQuantity ?? item.purchasedQuantity,
+    unit: overrides?.unit ?? item.unit,
+    isChecked: overrides?.isChecked ?? item.isChecked,
+    estimatedUnitPrice: overrides?.estimatedUnitPrice ?? item.estimatedUnitPrice ?? null,
+    estimatedTotalPrice: overrides?.estimatedTotalPrice ?? item.estimatedTotalPrice ?? null,
+    actualTotalPrice: overrides?.actualTotalPrice ?? item.actualTotalPrice ?? null,
+    sourceType: overrides?.sourceType ?? item.sourceType,
+    catalogItemId: overrides?.catalogItemId ?? item.catalogItemId ?? null,
+  }
+}
+
+function buildPriceOptionPayload(state: typeof editPriceOption.value | typeof newPriceOptionByItemId.value[string]): PriceOptionPayload {
+  return {
+    storeName: state.storeName.trim(),
+    productName: state.productName.trim(),
+    unitPrice: Number(state.unitPrice),
+    totalPrice: Number(state.totalPrice),
+    productUrl: state.productUrl?.trim() || null,
+    isAvailable: state.isAvailable,
+  }
+}
+
+function removeQueuedCreateList(listId: string) {
+  const entries = readPendingMutations().filter(
+    (entry) => entry.mutation.shoppingListId !== listId,
+  )
+  writePendingMutations(entries)
+}
+
+function removeQueuedCreateItem(itemId: string) {
+  const entries = readPendingMutations().filter((entry) => {
+    if (entry.mutation.type === 'createItem' && entry.mutation.itemId === itemId) {
+      return false
+    }
+
+    if ('itemId' in entry.mutation && entry.mutation.itemId === itemId) {
+      return false
+    }
+
+    return true
+  })
+  writePendingMutations(entries)
+}
+
+function removeQueuedCreatePriceOption(priceOptionId: string) {
+  const entries = readPendingMutations().filter((entry) => {
+    if (
+      entry.mutation.type === 'createPriceOption' &&
+      entry.mutation.priceOptionId === priceOptionId
+    ) {
+      return false
+    }
+
+    if ('priceOptionId' in entry.mutation && entry.mutation.priceOptionId === priceOptionId) {
+      return false
+    }
+
+    return true
+  })
+  writePendingMutations(entries)
+}
+
+function resetNewItemForm() {
+  newItem.value = {
+    name: '',
+    requiredQuantity: 1,
+    inventoryQuantityUsed: 0,
+    quantity: 1,
+    purchasedQuantity: 0,
+    unit: 'Stk',
+    sourceType: 'Manual',
+    catalogItemId: '',
+  }
+}
+
+function updateQueuedCreateList(listId: string, payload: ShoppingListPayload) {
+  const entries = readPendingMutations()
+  const entry = entries.find(
+    (candidate) => candidate.mutation.type === 'createList' && candidate.mutation.shoppingListId === listId,
+  )
+
+  if (!entry || entry.mutation.type !== 'createList') {
+    return false
+  }
+
+  entry.mutation.payload = payload
+  writePendingMutations(entries)
+  return true
+}
+
+function updateQueuedCreateItem(itemId: string, payload: ShoppingItemPayload) {
+  const entries = readPendingMutations()
+  const entry = entries.find(
+    (candidate) => candidate.mutation.type === 'createItem' && candidate.mutation.itemId === itemId,
+  )
+
+  if (!entry || entry.mutation.type !== 'createItem') {
+    return false
+  }
+
+  entry.mutation.payload = payload
+  writePendingMutations(entries)
+  return true
+}
+
+function updateQueuedCreatePriceOption(priceOptionId: string, payload: PriceOptionPayload) {
+  const entries = readPendingMutations()
+  const entry = entries.find(
+    (candidate) =>
+      candidate.mutation.type === 'createPriceOption' &&
+      candidate.mutation.priceOptionId === priceOptionId,
+  )
+
+  if (!entry || entry.mutation.type !== 'createPriceOption') {
+    return false
+  }
+
+  entry.mutation.payload = payload
+  writePendingMutations(entries)
+  return true
+}
+
+function queueListUpdateMutation(shoppingListId: string, payload: ShoppingListPayload) {
+  const nextEntries = readPendingMutations().filter(
+    (entry) =>
+      !(entry.mutation.shoppingListId === shoppingListId && entry.mutation.type === 'updateList'),
+  )
+
+  nextEntries.push({
+    id: makeTempId('mutation-shopping'),
+    createdAt: new Date().toISOString(),
+    mutation: {
+      type: 'updateList',
+      shoppingListId,
+      payload,
+    },
+  })
+
+  writePendingMutations(nextEntries)
+}
+
+function queueListDeleteMutation(shoppingListId: string) {
+  const nextEntries = readPendingMutations().filter(
+    (entry) =>
+      !(
+        entry.mutation.shoppingListId === shoppingListId &&
+        (entry.mutation.type === 'updateList' || entry.mutation.type === 'deleteList' || entry.mutation.type === 'completeList')
+      ),
+  )
+
+  nextEntries.push({
+    id: makeTempId('mutation-shopping'),
+    createdAt: new Date().toISOString(),
+    mutation: {
+      type: 'deleteList',
+      shoppingListId,
+    },
+  })
+
+  writePendingMutations(nextEntries)
+}
+
+function queueListCompleteMutation(shoppingListId: string, payload: CompleteListPayload) {
+  const nextEntries = readPendingMutations().filter(
+    (entry) =>
+      !(entry.mutation.shoppingListId === shoppingListId && entry.mutation.type === 'completeList'),
+  )
+
+  nextEntries.push({
+    id: makeTempId('mutation-shopping'),
+    createdAt: new Date().toISOString(),
+    mutation: {
+      type: 'completeList',
+      shoppingListId,
+      payload,
+    },
+  })
+
+  writePendingMutations(nextEntries)
+}
+
+function queueUpdateMutation(shoppingListId: string, itemId: string, payload: ShoppingItemPayload) {
+  const nextEntries = readPendingMutations().filter(
+    (entry) =>
+      !(
+        entry.mutation.shoppingListId === shoppingListId &&
+        entry.mutation.type === 'updateItem' &&
+        entry.mutation.itemId === itemId
+      ),
+  )
+
+  nextEntries.push({
+    id: makeTempId('mutation-shopping'),
+    createdAt: new Date().toISOString(),
+    mutation: {
+      type: 'updateItem',
+      shoppingListId,
+      itemId,
+      payload,
+    },
+  })
+
+  writePendingMutations(nextEntries)
+}
+
+function queueDeleteMutation(shoppingListId: string, itemId: string) {
+  const nextEntries = readPendingMutations().filter(
+    (entry) =>
+      !(
+        entry.mutation.shoppingListId === shoppingListId &&
+        (entry.mutation.type === 'updateItem' || entry.mutation.type === 'deleteItem') &&
+        entry.mutation.itemId === itemId
+      ),
+  )
+
+  nextEntries.push({
+    id: makeTempId('mutation-shopping'),
+    createdAt: new Date().toISOString(),
+    mutation: {
+      type: 'deleteItem',
+      shoppingListId,
+      itemId,
+    },
+  })
+
+  writePendingMutations(nextEntries)
+}
+
+function queuePriceOptionUpdateMutation(
+  shoppingListId: string,
+  itemId: string,
+  priceOptionId: string,
+  payload: PriceOptionPayload,
+) {
+  const nextEntries = readPendingMutations().filter(
+    (entry) =>
+      !(
+        entry.mutation.shoppingListId === shoppingListId &&
+        entry.mutation.type === 'updatePriceOption' &&
+        entry.mutation.itemId === itemId &&
+        entry.mutation.priceOptionId === priceOptionId
+      ),
+  )
+
+  nextEntries.push({
+    id: makeTempId('mutation-shopping'),
+    createdAt: new Date().toISOString(),
+    mutation: {
+      type: 'updatePriceOption',
+      shoppingListId,
+      itemId,
+      priceOptionId,
+      payload,
+    },
+  })
+
+  writePendingMutations(nextEntries)
+}
+
+function queuePriceOptionDeleteMutation(shoppingListId: string, itemId: string, priceOptionId: string) {
+  const nextEntries = readPendingMutations().filter(
+    (entry) =>
+      !(
+        entry.mutation.shoppingListId === shoppingListId &&
+        (entry.mutation.type === 'updatePriceOption' || entry.mutation.type === 'deletePriceOption') &&
+        entry.mutation.itemId === itemId &&
+        entry.mutation.priceOptionId === priceOptionId
+      ),
+  )
+
+  nextEntries.push({
+    id: makeTempId('mutation-shopping'),
+    createdAt: new Date().toISOString(),
+    mutation: {
+      type: 'deletePriceOption',
+      shoppingListId,
+      itemId,
+      priceOptionId,
+    },
+  })
+
+  writePendingMutations(nextEntries)
+}
+
+async function syncPendingShoppingMutations() {
+  const entries = readPendingMutations()
+
+  if (entries.length === 0) {
+    return
+  }
+
+  isSyncing.value = true
+  const remaining = [...entries]
+  const listIdMap = new Map<string, string>()
+  const itemIdMap = new Map<string, string>()
+  const priceOptionIdMap = new Map<string, string>()
+  let syncedAny = false
+
+  while (remaining.length > 0) {
+    const current = remaining[0]
+    if (!current) {
+      break
+    }
+
+    try {
+      const resolvedListId = listIdMap.get(current.mutation.shoppingListId) ?? current.mutation.shoppingListId
+
+      switch (current.mutation.type) {
+        case 'createList': {
+          const createdList = await apiFetch<ShoppingList>('/shoppinglists', {
+            method: 'POST',
+            body: JSON.stringify(current.mutation.payload),
+          })
+          listIdMap.set(current.mutation.shoppingListId, createdList.id)
+          break
+        }
+        case 'updateList':
+          await apiFetch<ShoppingList>(`/shoppinglists/${resolvedListId}`, {
+            method: 'PUT',
+            body: JSON.stringify(current.mutation.payload),
+          })
+          break
+        case 'deleteList':
+          await apiFetch<void>(`/shoppinglists/${resolvedListId}`, {
+            method: 'DELETE',
+          })
+          break
+        case 'completeList':
+          await apiFetch<void>(`/shoppinglists/${resolvedListId}/complete`, {
+            method: 'POST',
+            body: JSON.stringify({
+              ...current.mutation.payload,
+              expenseCategoryId: current.mutation.payload.expenseCategoryId || null,
+            }),
+          })
+          break
+        case 'createItem':
+        {
+          const createdItem = await apiFetch<ShoppingItem>(`/shoppinglists/${resolvedListId}/items`, {
+            method: 'POST',
+            body: JSON.stringify(current.mutation.payload),
+          })
+          itemIdMap.set(current.mutation.itemId, createdItem.id)
+          break
+        }
+        case 'updateItem':
+        {
+          const resolvedItemId = itemIdMap.get(current.mutation.itemId) ?? current.mutation.itemId
+          await apiFetch<ShoppingItem>(
+            `/shoppinglists/${resolvedListId}/items/${resolvedItemId}`,
+            {
+              method: 'PUT',
+              body: JSON.stringify(current.mutation.payload),
+            },
+          )
+          break
+        }
+        case 'deleteItem':
+        {
+          const resolvedItemId = itemIdMap.get(current.mutation.itemId) ?? current.mutation.itemId
+          await apiFetch<void>(
+            `/shoppinglists/${resolvedListId}/items/${resolvedItemId}`,
+            {
+              method: 'DELETE',
+            },
+          )
+          break
+        }
+        case 'createPriceOption':
+        {
+          const resolvedItemId = itemIdMap.get(current.mutation.itemId) ?? current.mutation.itemId
+          const createdOption = await apiFetch<ShoppingItemPriceOption>(
+            `/shoppinglists/${resolvedListId}/items/${resolvedItemId}/price-options`,
+            {
+              method: 'POST',
+              body: JSON.stringify(current.mutation.payload),
+            },
+          )
+          priceOptionIdMap.set(current.mutation.priceOptionId, createdOption.id)
+          break
+        }
+        case 'updatePriceOption':
+        {
+          const resolvedItemId = itemIdMap.get(current.mutation.itemId) ?? current.mutation.itemId
+          const resolvedPriceOptionId =
+            priceOptionIdMap.get(current.mutation.priceOptionId) ?? current.mutation.priceOptionId
+          await apiFetch<ShoppingItemPriceOption>(
+            `/shoppinglists/${resolvedListId}/items/${resolvedItemId}/price-options/${resolvedPriceOptionId}`,
+            {
+              method: 'PUT',
+              body: JSON.stringify(current.mutation.payload),
+            },
+          )
+          break
+        }
+        case 'deletePriceOption':
+        {
+          const resolvedItemId = itemIdMap.get(current.mutation.itemId) ?? current.mutation.itemId
+          const resolvedPriceOptionId =
+            priceOptionIdMap.get(current.mutation.priceOptionId) ?? current.mutation.priceOptionId
+          await apiFetch<void>(
+            `/shoppinglists/${resolvedListId}/items/${resolvedItemId}/price-options/${resolvedPriceOptionId}`,
+            {
+              method: 'DELETE',
+            },
+          )
+          break
+        }
+      }
+
+      remaining.shift()
+      syncedAny = true
+    } catch (err) {
+      if (
+        current.mutation.type !== 'createItem' &&
+        current.mutation.type !== 'createList' &&
+        current.mutation.type !== 'createPriceOption' &&
+        err instanceof Error &&
+        err.message.toLowerCase().includes('nicht gefunden')
+      ) {
+        remaining.shift()
+        syncedAny = true
+        continue
+      }
+
+      if (isOfflineError(err)) {
+        break
+      }
+
+      error.value = err instanceof Error ? err.message : 'Offline-Sync fuer Einkaufsliste fehlgeschlagen.'
+      break
+    }
+  }
+
+  writePendingMutations(remaining)
+  isSyncing.value = false
+
+  if (syncedAny) {
+    success.value = 'Offline-Aenderungen der Einkaufsliste wurden synchronisiert.'
+    await loadData()
+  }
+}
+
+async function handleOnlineShoppingSync() {
+  isOnline.value = true
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return
+  }
+
+  await syncPendingShoppingMutations()
+}
+
+function handleOfflineShoppingMode() {
+  isOnline.value = false
+}
+
+function getCatalogSuggestions(query: string) {
+  const normalizedQuery = query.trim().toLowerCase()
 
   return catalogItems.value
-    .filter((item) => !query || item.name.toLowerCase().includes(query))
+    .filter((item) => !normalizedQuery || item.name.toLowerCase().includes(normalizedQuery))
+    .sort((left, right) => {
+      const leftStartsWith = left.name.toLowerCase().startsWith(normalizedQuery)
+      const rightStartsWith = right.name.toLowerCase().startsWith(normalizedQuery)
+
+      if (leftStartsWith !== rightStartsWith) {
+        return leftStartsWith ? -1 : 1
+      }
+
+      return left.name.localeCompare(right.name, 'de')
+    })
     .slice(0, 8)
-})
+}
+
+const catalogNameSuggestions = computed(() => getCatalogSuggestions(newItem.value.name))
 
 function formatMoney(value?: number | null) {
   if (value == null) {
@@ -220,6 +1012,7 @@ function applyCatalogNameSuggestion() {
   )
 
   if (!matchingCatalogItem) {
+    newItem.value.catalogItemId = ''
     return
   }
 
@@ -330,8 +1123,10 @@ function loadStoreSummaries() {
       return left.totalEstimatedPrice - right.totalEstimatedPrice
     })
 
-  if (summaries.length > 0) {
-    summaries[0]!.isBestOption = summaries[0]!.isComplete || summaries.length === 1
+  const bestCompleteSummary = summaries.find((summary) => summary.isComplete)
+
+  if (bestCompleteSummary) {
+    bestCompleteSummary.isBestOption = true
   }
 
   storeSummaries.value = summaries
@@ -341,6 +1136,7 @@ async function loadData() {
   loading.value = true
   error.value = ''
   success.value = ''
+  offlineSnapshotAt.value = null
 
   try {
     const [loadedCatalogItems, loadedShoppingLists, loadedCategories] = await Promise.all([
@@ -352,6 +1148,11 @@ async function loadData() {
     catalogItems.value = loadedCatalogItems
     shoppingLists.value = loadedShoppingLists
     categories.value = loadedCategories
+    saveOfflineCache('shopping-lists:view-data', {
+      catalogItems: loadedCatalogItems,
+      shoppingLists: loadedShoppingLists,
+      categories: loadedCategories,
+    })
 
     for (const list of loadedShoppingLists) {
       if (!selectedExpenseCategoryId.value[list.id]) {
@@ -375,7 +1176,47 @@ async function loadData() {
     }
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Einkaufslisten konnten nicht geladen werden.'
+
+    const cached = readOfflineCache<{
+      catalogItems: CatalogItem[]
+      shoppingLists: ShoppingList[]
+      categories: Category[]
+    }>('shopping-lists:view-data')
+
+    if (!cached) {
+      error.value = err instanceof Error ? err.message : 'Einkaufslisten konnten nicht geladen werden.'
+      return
+    }
+
+    catalogItems.value = cached.value.catalogItems
+    shoppingLists.value = cached.value.shoppingLists
+    categories.value = cached.value.categories
+    offlineSnapshotAt.value = cached.updatedAt
+    error.value = 'Offline-Modus: Es werden die zuletzt geladenen Einkaufsdaten angezeigt.'
+
+    for (const list of cached.value.shoppingLists) {
+      if (!selectedExpenseCategoryId.value[list.id]) {
+        selectedExpenseCategoryId.value[list.id] =
+          cached.value.categories.find((c) => c.type === 'Expense')?.id ?? ''
+      }
+    }
+
+    if (!selectedListId.value && cached.value.shoppingLists.length > 0) {
+      selectedListId.value = cached.value.shoppingLists[0]?.id ?? ''
+    }
+
+    if (
+      selectedListId.value &&
+      !cached.value.shoppingLists.some((x) => x.id === selectedListId.value)
+    ) {
+      selectedListId.value = cached.value.shoppingLists[0]?.id ?? ''
+    }
+
+    if (selectedListId.value) {
+      loadStoreSummaries()
+    } else {
+      storeSummaries.value = []
+    }
   } finally {
     loading.value = false
   }
@@ -384,11 +1225,14 @@ async function loadData() {
 async function createList() {
   error.value = ''
   success.value = ''
+  const payload: ShoppingListPayload = {
+    name: newList.value.name.trim(),
+  }
 
   try {
     const created = await apiFetch<ShoppingList>('/shoppinglists', {
       method: 'POST',
-      body: JSON.stringify(newList.value),
+      body: JSON.stringify(payload),
     })
 
     newList.value.name = ''
@@ -397,7 +1241,29 @@ async function createList() {
     success.value = 'Einkaufsliste wurde erstellt.'
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Einkaufsliste konnte nicht erstellt werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Einkaufsliste konnte nicht erstellt werden.'
+      return
+    }
+
+    const tempListId = makeTempId('offline-list')
+    enqueueOfflineMutation<ShoppingMutation>('shopping-lists', {
+      type: 'createList',
+      shoppingListId: tempListId,
+      payload,
+    })
+    refreshPendingMutationCount()
+
+    applyLocalListUpsert({
+      id: tempListId,
+      name: payload.name,
+      createdAt: new Date().toISOString(),
+      items: [],
+    })
+    selectedListId.value = tempListId
+    newList.value.name = ''
+    success.value = 'Einkaufsliste offline angelegt und zum Sync vorgemerkt.'
   }
 }
 
@@ -414,11 +1280,26 @@ function cancelEditList() {
 async function updateList(id: string) {
   error.value = ''
   success.value = ''
+  const payload: ShoppingListPayload = {
+    name: editList.value.name.trim(),
+  }
+
+  if (isTempId(id)) {
+    updateQueuedCreateList(id, payload)
+    const list = shoppingLists.value.find((entry) => entry.id === id)
+    if (list) {
+      list.name = payload.name
+      applyLocalListUpsert({ ...list })
+    }
+    cancelEditList()
+    success.value = 'Lokale Einkaufsliste wurde aktualisiert.'
+    return
+  }
 
   try {
     await apiFetch<ShoppingList>(`/shoppinglists/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(editList.value),
+      body: JSON.stringify(payload),
     })
 
     cancelEditList()
@@ -426,13 +1307,36 @@ async function updateList(id: string) {
     success.value = 'Einkaufsliste wurde aktualisiert.'
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Einkaufsliste konnte nicht aktualisiert werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Einkaufsliste konnte nicht aktualisiert werden.'
+      return
+    }
+
+    queueListUpdateMutation(id, payload)
+    const list = shoppingLists.value.find((entry) => entry.id === id)
+    if (list) {
+      list.name = payload.name
+      applyLocalListUpsert({ ...list })
+    }
+    cancelEditList()
+    success.value = 'Einkaufsliste offline aktualisiert und zum Sync vorgemerkt.'
   }
 }
 
 async function deleteList(id: string) {
   error.value = ''
   success.value = ''
+
+  if (isTempId(id)) {
+    removeQueuedCreateList(id)
+    if (editListId.value === id) {
+      cancelEditList()
+    }
+    applyLocalListRemoval(id)
+    success.value = 'Lokale Einkaufsliste wurde entfernt.'
+    return
+  }
 
   try {
     await apiFetch<void>(`/shoppinglists/${id}`, {
@@ -454,7 +1358,18 @@ async function deleteList(id: string) {
     success.value = 'Einkaufsliste wurde gelöscht.'
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Einkaufsliste konnte nicht gelöscht werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Einkaufsliste konnte nicht gelöscht werden.'
+      return
+    }
+
+    if (editListId.value === id) {
+      cancelEditList()
+    }
+    queueListDeleteMutation(id)
+    applyLocalListRemoval(id)
+    success.value = 'Einkaufsliste offline entfernt und zum Sync vorgemerkt.'
   }
 }
 
@@ -466,43 +1381,56 @@ async function createItem() {
 
   error.value = ''
   success.value = ''
-
-  const catalogEstimate = newItem.value.catalogItemId
-    ? getCatalogEstimate(newItem.value.catalogItemId, Number(newItem.value.quantity))
-    : null
+  const payload = buildCreateItemPayload()
 
   try {
     await apiFetch<ShoppingItem>(`/shoppinglists/${selectedListId.value}/items`, {
       method: 'POST',
-      body: JSON.stringify({
-        ...newItem.value,
-        requiredQuantity: Number(newItem.value.requiredQuantity),
-        inventoryQuantityUsed: Number(newItem.value.inventoryQuantityUsed),
-        quantity: Number(newItem.value.quantity),
-        purchasedQuantity: Number(newItem.value.purchasedQuantity),
-        estimatedUnitPrice: catalogEstimate?.estimatedUnitPrice ?? null,
-        estimatedTotalPrice: catalogEstimate?.estimatedTotalPrice ?? null,
-        actualTotalPrice: null,
-        catalogItemId: newItem.value.catalogItemId || null,
-      }),
+      body: JSON.stringify(payload),
     })
 
-    newItem.value = {
-      name: '',
-      requiredQuantity: 1,
-      inventoryQuantityUsed: 0,
-      quantity: 1,
-      purchasedQuantity: 0,
-      unit: 'Stk',
-      sourceType: 'Manual',
-      catalogItemId: '',
-    }
+    resetNewItemForm()
 
     await loadData()
     success.value = 'Artikel wurde erstellt.'
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Artikel konnte nicht erstellt werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Artikel konnte nicht erstellt werden.'
+      return
+    }
+
+    const tempItemId = makeTempId('offline-item')
+    enqueueOfflineMutation<ShoppingMutation>('shopping-lists', {
+      type: 'createItem',
+      shoppingListId: selectedListId.value,
+      itemId: tempItemId,
+      payload,
+    })
+    refreshPendingMutationCount()
+
+    applyLocalItemUpsert(selectedListId.value, {
+      id: tempItemId,
+      shoppingListId: selectedListId.value,
+      name: payload.name,
+      requiredQuantity: payload.requiredQuantity,
+      inventoryQuantityUsed: payload.inventoryQuantityUsed,
+      quantity: payload.quantity,
+      purchasedQuantity: payload.purchasedQuantity,
+      unit: payload.unit,
+      isChecked: payload.isChecked,
+      estimatedUnitPrice: payload.estimatedUnitPrice,
+      estimatedTotalPrice: payload.estimatedTotalPrice,
+      actualTotalPrice: payload.actualTotalPrice,
+      sourceType: payload.sourceType,
+      catalogItemId: payload.catalogItemId ?? null,
+      catalogItemName: getCatalogItemName(payload.catalogItemId),
+      priceOptions: [],
+    })
+
+    resetNewItemForm()
+    success.value = 'Artikel offline vorgemerkt und lokal gespeichert.'
   }
 }
 
@@ -531,25 +1459,29 @@ async function updateItem(item: ShoppingItem) {
 
   error.value = ''
   success.value = ''
+  const payload = buildUpdateItemPayload(item, {
+    purchasedQuantity: Number(editItem.value.purchasedQuantity),
+    actualTotalPrice:
+      editItem.value.actualTotalPrice == null ? null : Number(editItem.value.actualTotalPrice),
+    isChecked: editItem.value.isChecked,
+  })
+
+  if (isTempId(item.id)) {
+    updateQueuedCreateItem(item.id, payload)
+    applyLocalItemUpsert(item.shoppingListId, {
+      ...item,
+      ...payload,
+      catalogItemName: getCatalogItemName(payload.catalogItemId),
+    })
+    cancelEditItem()
+    success.value = 'Lokaler Artikel wurde aktualisiert.'
+    return
+  }
 
   try {
     await apiFetch<ShoppingItem>(`/shoppinglists/${selectedListId.value}/items/${item.id}`, {
       method: 'PUT',
-      body: JSON.stringify({
-        name: item.name,
-        requiredQuantity: item.requiredQuantity,
-        inventoryQuantityUsed: item.inventoryQuantityUsed,
-        quantity: item.quantity,
-        purchasedQuantity: Number(editItem.value.purchasedQuantity),
-        unit: item.unit,
-        isChecked: editItem.value.isChecked,
-        estimatedUnitPrice: item.estimatedUnitPrice ?? null,
-        estimatedTotalPrice: item.estimatedTotalPrice ?? null,
-        actualTotalPrice:
-          editItem.value.actualTotalPrice == null ? null : Number(editItem.value.actualTotalPrice),
-        sourceType: item.sourceType,
-        catalogItemId: item.catalogItemId ?? null,
-      }),
+      body: JSON.stringify(payload),
     })
 
     cancelEditItem()
@@ -557,7 +1489,20 @@ async function updateItem(item: ShoppingItem) {
     success.value = 'Einkaufsdaten wurden aktualisiert.'
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Artikel konnte nicht aktualisiert werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Artikel konnte nicht aktualisiert werden.'
+      return
+    }
+
+    queueUpdateMutation(selectedListId.value, item.id, payload)
+    applyLocalItemUpsert(item.shoppingListId, {
+      ...item,
+      ...payload,
+      catalogItemName: getCatalogItemName(payload.catalogItemId),
+    })
+    cancelEditItem()
+    success.value = 'Artikel offline aktualisiert und zum Sync vorgemerkt.'
   }
 }
 
@@ -568,30 +1513,42 @@ async function toggleItem(item: ShoppingItem) {
 
   error.value = ''
   success.value = ''
+  const payload = buildUpdateItemPayload(item, {
+    isChecked: !item.isChecked,
+  })
+
+  if (isTempId(item.id)) {
+    updateQueuedCreateItem(item.id, payload)
+    applyLocalItemUpsert(item.shoppingListId, {
+      ...item,
+      ...payload,
+      catalogItemName: getCatalogItemName(payload.catalogItemId),
+    })
+    return
+  }
 
   try {
     await apiFetch<ShoppingItem>(`/shoppinglists/${selectedListId.value}/items/${item.id}`, {
       method: 'PUT',
-      body: JSON.stringify({
-        name: item.name,
-        requiredQuantity: item.requiredQuantity,
-        inventoryQuantityUsed: item.inventoryQuantityUsed,
-        quantity: item.quantity,
-        purchasedQuantity: item.purchasedQuantity,
-        unit: item.unit,
-        isChecked: !item.isChecked,
-        estimatedUnitPrice: item.estimatedUnitPrice ?? null,
-        estimatedTotalPrice: item.estimatedTotalPrice ?? null,
-        actualTotalPrice: item.actualTotalPrice ?? null,
-        sourceType: item.sourceType,
-        catalogItemId: item.catalogItemId ?? null,
-      }),
+      body: JSON.stringify(payload),
     })
 
     await loadData()
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Artikel konnte nicht aktualisiert werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Artikel konnte nicht aktualisiert werden.'
+      return
+    }
+
+    queueUpdateMutation(selectedListId.value, item.id, payload)
+    applyLocalItemUpsert(item.shoppingListId, {
+      ...item,
+      ...payload,
+      catalogItemName: getCatalogItemName(payload.catalogItemId),
+    })
+    success.value = 'Aenderung offline vorgemerkt.'
   }
 }
 
@@ -602,6 +1559,21 @@ async function deleteItem(itemId: string) {
 
   error.value = ''
   success.value = ''
+
+  const localItem = selectedList.value?.items.find((item) => item.id === itemId) ?? null
+
+  if (localItem && isTempId(itemId)) {
+    const nextEntries = readPendingMutations().filter(
+      (entry) => !(entry.mutation.type === 'createItem' && entry.mutation.itemId === itemId),
+    )
+    writePendingMutations(nextEntries)
+    applyLocalItemRemoval(localItem.shoppingListId, itemId)
+    if (editItemId.value === itemId) {
+      cancelEditItem()
+    }
+    success.value = 'Lokaler Artikel wurde entfernt.'
+    return
+  }
 
   try {
     await apiFetch<void>(`/shoppinglists/${selectedListId.value}/items/${itemId}`, {
@@ -616,7 +1588,20 @@ async function deleteItem(itemId: string) {
     success.value = 'Artikel wurde gelöscht.'
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Artikel konnte nicht gelöscht werden.'
+
+    if (!isOfflineError(err) || !localItem) {
+      error.value = err instanceof Error ? err.message : 'Artikel konnte nicht gelöscht werden.'
+      return
+    }
+
+    queueDeleteMutation(selectedListId.value, itemId)
+
+    if (editItemId.value === itemId) {
+      cancelEditItem()
+    }
+
+    applyLocalItemRemoval(localItem.shoppingListId, itemId)
+    success.value = 'Artikel offline entfernt und zum Sync vorgemerkt.'
   }
 }
 
@@ -633,16 +1618,17 @@ async function completeShoppingList(id: string) {
   }
 
   const list = shoppingLists.value.find((x) => x.id === id)
+  const payload: CompleteListPayload = {
+    createBudgetExpense,
+    expenseCategoryId: createBudgetExpense ? expenseCategoryId : null,
+    transactionTitle: list ? `Einkauf · ${list.name}` : 'Einkauf',
+    transactionDate: new Date().toISOString().slice(0, 10),
+  }
 
   try {
     await apiFetch(`/shoppinglists/${id}/complete`, {
       method: 'POST',
-      body: JSON.stringify({
-        createBudgetExpense,
-        expenseCategoryId: createBudgetExpense ? expenseCategoryId : null,
-        transactionTitle: list ? `Einkauf · ${list.name}` : 'Einkauf',
-        transactionDate: new Date().toISOString().slice(0, 10),
-      }),
+      body: JSON.stringify(payload),
     })
 
     success.value = createBudgetExpense
@@ -652,7 +1638,14 @@ async function completeShoppingList(id: string) {
     await loadData()
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Fehler beim Abschließen der Einkaufsliste.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Fehler beim Abschließen der Einkaufsliste.'
+      return
+    }
+
+    queueListCompleteMutation(id, payload)
+    success.value = 'Abschluss offline vorgemerkt und wird spaeter synchronisiert.'
   }
 }
 
@@ -689,20 +1682,14 @@ async function createPriceOption(item: ShoppingItem) {
 
   error.value = ''
   success.value = ''
+  const payload = buildPriceOptionPayload(state)
 
   try {
     await apiFetch<ShoppingItemPriceOption>(
       `/shoppinglists/${selectedListId.value}/items/${item.id}/price-options`,
       {
         method: 'POST',
-        body: JSON.stringify({
-          storeName: state.storeName,
-          productName: state.productName,
-          unitPrice: Number(state.unitPrice),
-          totalPrice: Number(state.totalPrice),
-          productUrl: state.productUrl || null,
-          isAvailable: state.isAvailable,
-        }),
+        body: JSON.stringify(payload),
       },
     )
 
@@ -719,7 +1706,39 @@ async function createPriceOption(item: ShoppingItem) {
     await loadData()
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Preisoption konnte nicht erstellt werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Preisoption konnte nicht erstellt werden.'
+      return
+    }
+
+    const tempPriceOptionId = makeTempId('offline-price-option')
+    enqueueOfflineMutation<ShoppingMutation>('shopping-lists', {
+      type: 'createPriceOption',
+      shoppingListId: selectedListId.value,
+      itemId: item.id,
+      priceOptionId: tempPriceOptionId,
+      payload,
+    })
+    refreshPendingMutationCount()
+
+    applyLocalPriceOptionUpsert(selectedListId.value, item.id, {
+      id: tempPriceOptionId,
+      shoppingItemId: item.id,
+      checkedAt: new Date().toISOString(),
+      ...payload,
+    })
+
+    newPriceOptionByItemId.value[item.id] = {
+      storeName: '',
+      productName: item.catalogItemName || item.name,
+      unitPrice: 0,
+      totalPrice: 0,
+      productUrl: '',
+      isAvailable: true,
+    }
+
+    success.value = 'Preisoption offline gespeichert und zum Sync vorgemerkt.'
   }
 }
 
@@ -730,20 +1749,27 @@ async function updatePriceOption(item: ShoppingItem, priceOptionId: string) {
 
   error.value = ''
   success.value = ''
+  const payload = buildPriceOptionPayload(editPriceOption.value)
+
+  if (isTempId(priceOptionId)) {
+    updateQueuedCreatePriceOption(priceOptionId, payload)
+    applyLocalPriceOptionUpsert(selectedListId.value, item.id, {
+      id: priceOptionId,
+      shoppingItemId: item.id,
+      checkedAt: new Date().toISOString(),
+      ...payload,
+    })
+    cancelEditPriceOption()
+    success.value = 'Lokale Preisoption wurde aktualisiert.'
+    return
+  }
 
   try {
     await apiFetch<ShoppingItemPriceOption>(
       `/shoppinglists/${selectedListId.value}/items/${item.id}/price-options/${priceOptionId}`,
       {
         method: 'PUT',
-        body: JSON.stringify({
-          storeName: editPriceOption.value.storeName,
-          productName: editPriceOption.value.productName,
-          unitPrice: Number(editPriceOption.value.unitPrice),
-          totalPrice: Number(editPriceOption.value.totalPrice),
-          productUrl: editPriceOption.value.productUrl || null,
-          isAvailable: editPriceOption.value.isAvailable,
-        }),
+        body: JSON.stringify(payload),
       },
     )
 
@@ -752,7 +1778,21 @@ async function updatePriceOption(item: ShoppingItem, priceOptionId: string) {
     await loadData()
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Preisoption konnte nicht aktualisiert werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Preisoption konnte nicht aktualisiert werden.'
+      return
+    }
+
+    queuePriceOptionUpdateMutation(selectedListId.value, item.id, priceOptionId, payload)
+    applyLocalPriceOptionUpsert(selectedListId.value, item.id, {
+      id: priceOptionId,
+      shoppingItemId: item.id,
+      checkedAt: new Date().toISOString(),
+      ...payload,
+    })
+    cancelEditPriceOption()
+    success.value = 'Preisoption offline aktualisiert und zum Sync vorgemerkt.'
   }
 }
 
@@ -763,6 +1803,16 @@ async function deletePriceOption(item: ShoppingItem, priceOptionId: string) {
 
   error.value = ''
   success.value = ''
+
+  if (isTempId(priceOptionId)) {
+    removeQueuedCreatePriceOption(priceOptionId)
+    if (editPriceOptionId.value === priceOptionId) {
+      cancelEditPriceOption()
+    }
+    applyLocalPriceOptionRemoval(selectedListId.value, item.id, priceOptionId)
+    success.value = 'Lokale Preisoption wurde entfernt.'
+    return
+  }
 
   try {
     await apiFetch<void>(
@@ -780,11 +1830,35 @@ async function deletePriceOption(item: ShoppingItem, priceOptionId: string) {
     await loadData()
   } catch (err) {
     console.error(err)
-    error.value = err instanceof Error ? err.message : 'Preisoption konnte nicht gelöscht werden.'
+
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Preisoption konnte nicht gelöscht werden.'
+      return
+    }
+
+    queuePriceOptionDeleteMutation(selectedListId.value, item.id, priceOptionId)
+
+    if (editPriceOptionId.value === priceOptionId) {
+      cancelEditPriceOption()
+    }
+
+    applyLocalPriceOptionRemoval(selectedListId.value, item.id, priceOptionId)
+    success.value = 'Preisoption offline entfernt und zum Sync vorgemerkt.'
   }
 }
 
-onMounted(loadData)
+onMounted(async () => {
+  refreshPendingMutationCount()
+  window.addEventListener('online', handleOnlineShoppingSync)
+  window.addEventListener('offline', handleOfflineShoppingMode)
+  await loadData()
+  await syncPendingShoppingMutations()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('online', handleOnlineShoppingSync)
+  window.removeEventListener('offline', handleOfflineShoppingMode)
+})
 </script>
 
 <template>
@@ -794,10 +1868,19 @@ onMounted(loadData)
         <h1 class="page-title">Einkaufsliste <span class="title-accent">Marktzettel</span></h1>
         <p class="page-subtitle">Charmant wie ein echter Einkaufszettel, aber mit Preisen, Quellen und Inventar-Abgleich.</p>
       </div>
+      <div class="header-actions">
+        <span :class="['sync-chip', syncStatusClass]">{{ syncStatusLabel }}</span>
+      </div>
     </div>
 
     <div v-if="error" class="alert alert-error">{{ error }}</div>
     <div v-if="success" class="alert alert-success">{{ success }}</div>
+    <div v-if="pendingMutationCount > 0" class="alert">
+      {{ pendingMutationLabel }}
+    </div>
+    <div v-if="offlineSnapshotAt" class="alert">
+      Offline-Snapshot von {{ offlineSnapshotLabel }}
+    </div>
     <div v-if="loading" class="alert">Lade Einkaufslisten…</div>
 
     <div class="stats-grid">
@@ -952,15 +2035,18 @@ onMounted(loadData)
                 type="text"
                 placeholder="Name"
                 required
-                @change="applyCatalogNameSuggestion"
+                @input="applyCatalogNameSuggestion"
               />
               <input v-model="newItem.requiredQuantity" type="number" min="0" step="0.01" placeholder="Benötigt" required />
               <input v-model="newItem.unit" type="text" placeholder="Einheit" required />
             </div>
             <datalist id="shopping-catalog-name-suggestions">
-              <option v-for="catalogItem in catalogNameSuggestions" :key="catalogItem.id" :value="catalogItem.name">
-                {{ catalogItem.defaultUnit }}
-              </option>
+              <option
+                v-for="catalogItem in catalogNameSuggestions"
+                :key="catalogItem.id"
+                :value="catalogItem.name"
+                :label="`${catalogItem.name} · ${catalogItem.defaultUnit}`"
+              />
             </datalist>
             <div v-if="selectedCatalogEstimate" class="catalog-price-hint">
               <span>Vorschlag aus Katalog:</span>
@@ -987,6 +2073,12 @@ onMounted(loadData)
           <div class="note-pill"><span>Tatsächlich</span><strong>{{ formatMoney(selectedListTotals.actual) }}</strong></div>
         </div>
 
+        <div v-if="bestCompleteStoreSummary" class="catalog-price-hint">
+          <span>Günstigster vollständiger Händler:</span>
+          <strong>{{ bestCompleteStoreSummary.storeName }}</strong>
+          <span>· {{ formatMoney(bestCompleteStoreSummary.totalEstimatedPrice) }}</span>
+        </div>
+
         <div class="store-compare" v-if="storeSummaries.length > 0">
           <div class="card-header">
             <h3 class="card-title">Händlervergleich</h3>
@@ -1009,26 +2101,37 @@ onMounted(loadData)
 
           <div v-for="item in selectedList.items" :key="item.id" class="grocery-row" :class="{ checked: item.isChecked }">
             <div class="grocery-main">
-              <label class="inline-checkbox">
-                <input :checked="item.isChecked" type="checkbox" @change="toggleItem(item)" />
-              </label>
-
               <div class="grocery-text">
-                <div class="grocery-name">{{ item.name }}</div>
-                <div class="grocery-meta">
-                  <span>{{ displaySource(item.sourceType) }}</span>
-                  <span v-if="item.catalogItemName">· {{ item.catalogItemName }}</span>
-                  <span>· {{ item.requiredQuantity }} {{ item.unit }} Bedarf</span>
-                  <span>· {{ item.inventoryQuantityUsed }} aus Inventar</span>
-                </div>
-                <div class="grocery-buyline">
-                  Zu kaufen: <strong>{{ item.quantity }} {{ item.unit }}</strong>
-                  <span class="price-inline">Geschätzt {{ formatMoney(item.estimatedTotalPrice) }}</span>
-                  <span class="price-inline">Echt {{ formatMoney(item.actualTotalPrice) }}</span>
+                <div class="grocery-headline">
+                  <div class="grocery-name">{{ item.name }}</div>
+                  <div class="grocery-amount">{{ item.quantity }} {{ item.unit }}</div>
                 </div>
               </div>
 
-              <div class="actions">
+              <label class="grocery-check">
+                <input :checked="item.isChecked" type="checkbox" @change="toggleItem(item)" />
+                <span class="grocery-check-mark"></span>
+              </label>
+            </div>
+
+            <div class="grocery-footer">
+              <div class="grocery-prices">
+                <span class="price-pill">
+                  Geschätzt <strong>{{ formatMoney(item.estimatedTotalPrice) }}</strong>
+                </span>
+                <span class="price-pill price-pill-actual">
+                  Echt <strong>{{ formatMoney(item.actualTotalPrice) }}</strong>
+                </span>
+              </div>
+
+              <div class="grocery-meta">
+                <span>{{ displaySource(item.sourceType) }}</span>
+                <span v-if="item.catalogItemName">· {{ item.catalogItemName }}</span>
+                <span>· Bedarf {{ item.requiredQuantity }} {{ item.unit }}</span>
+                <span>· Inventar {{ item.inventoryQuantityUsed }}</span>
+              </div>
+
+              <div class="actions grocery-actions">
                 <button class="btn-secondary" @click="startEditItem(item)">Echten Einkauf pflegen</button>
                 <button class="btn-danger" @click="deleteItem(item.id)">Löschen</button>
               </div>
@@ -1107,13 +2210,13 @@ onMounted(loadData)
                   <input v-model="getNewPriceOptionState(item).totalPrice" type="number" step="0.01" placeholder="Gesamtpreis" />
                   <input v-model="getNewPriceOptionState(item).productUrl" class="field-span-2" type="text" placeholder="Produkt-URL" />
                 </div>
-                <div class="form-actions">
-                  <label class="checkbox-row">
-                    <input v-model="getNewPriceOptionState(item).isAvailable" type="checkbox" />
-                    Verfügbar
-                  </label>
-                  <button class="btn-add" @click="createPriceOption(item)">Preisoption speichern</button>
-                </div>
+              </div>
+              <div class="form-actions">
+                <label class="checkbox-row">
+                  <input v-model="getNewPriceOptionState(item).isAvailable" type="checkbox" />
+                  Verfügbar
+                </label>
+                <button class="btn-add" @click="createPriceOption(item)">Preisoption speichern</button>
               </div>
             </div>
           </div>
@@ -1166,6 +2269,42 @@ onMounted(loadData)
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.sync-chip-online {
+  background: rgba(16,185,129,0.12);
+  color: #10b981;
+  border-color: rgba(16,185,129,0.22);
+}
+
+.sync-chip-offline {
+  background: rgba(107,114,128,0.12);
+  color: #6b7280;
+  border-color: rgba(107,114,128,0.2);
+}
+
+.sync-chip-pending {
+  background: rgba(245,158,11,0.12);
+  color: #d97706;
+  border-color: rgba(245,158,11,0.22);
+}
+
+.sync-chip-syncing {
+  background: rgba(59,130,246,0.12);
+  color: #2563eb;
+  border-color: rgba(59,130,246,0.22);
 }
 
 .alert {
@@ -1611,7 +2750,7 @@ textarea {
   background: rgba(255,252,245,0.94);
   border: 1px solid rgba(120, 93, 51, 0.14);
   border-radius: 10px;
-  padding: 14px 16px 14px 18px;
+  padding: 16px 18px 14px 18px;
   box-shadow: 0 8px 20px rgba(64, 43, 10, 0.08);
 }
 
@@ -1633,35 +2772,147 @@ textarea {
 }
 
 .grocery-main {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 14px;
-  align-items: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 @media (max-width: 860px) {
-  .grocery-main { grid-template-columns: 1fr; }
+  .grocery-main {
+    align-items: flex-start;
+  }
+}
+
+.grocery-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.grocery-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .grocery-name {
   font-size: 20px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 4px;
+  margin: 0;
   font-family: "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
 }
 
-.grocery-meta,
-.grocery-buyline {
-  color: var(--text-muted);
+.grocery-amount {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(120, 93, 51, 0.08);
+  border: 1px solid rgba(120, 93, 51, 0.18);
+  color: var(--text);
   font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.grocery-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.grocery-check input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  margin: 0;
+}
+
+.grocery-check-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  border: 2px solid rgba(120, 93, 51, 0.35);
+  background: rgba(255,255,255,0.7);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+  transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.grocery-check input:checked + .grocery-check-mark {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.02);
+}
+
+.grocery-check input:checked + .grocery-check-mark::after {
+  content: '';
+  display: block;
+  width: 7px;
+  height: 13px;
+  margin: 4px 0 0 9px;
+  border: solid white;
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
+}
+
+.grocery-footer {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.grocery-row.checked .grocery-name,
+.grocery-row.checked .grocery-amount {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(120, 93, 51, 0.75);
+}
+
+.grocery-meta {
+  color: var(--text-muted);
+  font-size: 13px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.price-inline {
+.grocery-prices {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.price-pill {
   display: inline-flex;
-  padding-left: 8px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(120, 93, 51, 0.08);
+  border: 1px solid rgba(120, 93, 51, 0.16);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.price-pill strong {
+  color: var(--text);
+}
+
+.price-pill-actual {
+  background: rgba(16,185,129,0.08);
+  border-color: rgba(16,185,129,0.18);
+}
+
+.grocery-actions {
+  padding-top: 4px;
 }
 
 .inline-editor,
@@ -1686,6 +2937,53 @@ textarea {
   border: 1px dashed rgba(245, 158, 11, 0.24);
   color: var(--text-muted);
   font-size: 13px;
+}
+
+:global(.dark-mode) .grocery-sheet {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 22%),
+    linear-gradient(to bottom, rgba(18,24,38,0.98), rgba(15,23,42,0.98)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 36px, rgba(96, 165, 250, 0.12) 37px, transparent 38px);
+  border-color: rgba(96, 165, 250, 0.16);
+  box-shadow:
+    0 24px 60px rgba(2, 6, 23, 0.46),
+    inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+:global(.dark-mode) .grocery-sheet::before {
+  background: rgba(248, 113, 113, 0.22);
+}
+
+:global(.dark-mode) .grocery-sheet::after {
+  color: rgba(148, 163, 184, 0.7);
+}
+
+:global(.dark-mode) .grocery-row {
+  background: rgba(15, 23, 42, 0.88);
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28);
+}
+
+:global(.dark-mode) .grocery-row::before {
+  background: rgba(96, 165, 250, 0.28);
+  border-color: rgba(96, 165, 250, 0.38);
+}
+
+:global(.dark-mode) .grocery-amount,
+:global(.dark-mode) .price-pill {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+:global(.dark-mode) .price-pill-actual {
+  background: rgba(6, 78, 59, 0.35);
+  border-color: rgba(16,185,129,0.24);
+}
+
+:global(.dark-mode) .grocery-check-mark {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(148, 163, 184, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
 .complete-budget-box {

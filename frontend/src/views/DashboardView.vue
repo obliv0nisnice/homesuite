@@ -7,6 +7,7 @@
       </div>
 
       <div class="header-actions">
+        <span :class="['sync-chip', syncStatusClass]">{{ syncStatusLabel }}</span>
         <button class="btn-secondary" @click="showSubscriptionModal = true">Kalender-Abos</button>
         <button class="btn-secondary" @click="goToPreviousMonth">←</button>
         <button class="btn-secondary" @click="goToToday">Heute</button>
@@ -54,6 +55,10 @@
 
     <div v-if="error" class="alert alert-error">⚠ {{ error }}</div>
     <div v-if="success" class="alert alert-success">✓ {{ success }}</div>
+    <div v-if="pendingMutationCount > 0" class="alert">{{ pendingMutationLabel }}</div>
+    <div v-if="offlineSnapshotAt" class="alert">
+      Offline-Snapshot von {{ offlineSnapshotLabel }}
+    </div>
 
     <div class="dashboard-grid">
       <div class="calendar-card">
@@ -304,8 +309,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiFetch } from '@/services/api'
+import { readOfflineCache, saveOfflineCache } from '@/services/offlineCache'
+import {
+  enqueueOfflineMutation,
+  makeTempId,
+  readOfflineMutations,
+  writeOfflineMutations,
+} from '@/services/offlineMutations'
 
 type CalendarEvent = {
   id: string
@@ -347,6 +359,55 @@ type Recipe = {
   name: string
 }
 
+type CalendarEventPayload = {
+  date: string
+  title: string
+  startTime?: string | null
+  endTime?: string | null
+  notes?: string | null
+}
+
+type MealPayload = {
+  date: string
+  mealType: string
+  servings: number
+  notes?: string | null
+  recipeId: string
+}
+
+type DashboardMutation =
+  | {
+      type: 'createEvent'
+      eventId: string
+      payload: CalendarEventPayload
+    }
+  | {
+      type: 'deleteEvent'
+      eventId: string
+    }
+  | {
+      type: 'createMeal'
+      mealId: string
+      payload: MealPayload
+    }
+  | {
+      type: 'deleteMeal'
+      mealId: string
+    }
+  | {
+      type: 'completeMeal'
+      mealId: string
+    }
+  | {
+      type: 'createSubscription'
+      subscriptionId: string
+      url: string
+    }
+  | {
+      type: 'deleteSubscription'
+      subscriptionId: string
+    }
+
 const today = new Date()
 const currentYear = ref(today.getFullYear())
 const currentMonth = ref(today.getMonth() + 1)
@@ -363,6 +424,10 @@ const error = ref('')
 const success = ref('')
 const subscriptionUrl = ref('')
 const calendarSubscriptions = ref<CalendarSubscription[]>([])
+const offlineSnapshotAt = ref<string | null>(null)
+const pendingMutationCount = ref(0)
+const isOnline = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
+const isSyncing = ref(false)
 
 const eventForm = ref({
   title: '',
@@ -393,6 +458,274 @@ const monthLabel = computed(() =>
 const selectedDayEvents = computed(() => getEventsForDay(selectedDate.value))
 const selectedDayMeals = computed(() => getMealsForDay(selectedDate.value))
 const completedMealsCount = computed(() => mealPlans.value.filter(x => x.isCompleted).length)
+const pendingMutationLabel = computed(() =>
+  pendingMutationCount.value === 1
+    ? '1 lokale Offline-Aenderung wartet auf Sync.'
+    : `${pendingMutationCount.value} lokale Offline-Aenderungen warten auf Sync.`,
+)
+const syncStatusLabel = computed(() => {
+  if (isSyncing.value) {
+    return 'Synchronisiert'
+  }
+
+  if (!isOnline.value) {
+    return pendingMutationCount.value > 0 ? 'Offline · wartet' : 'Offline'
+  }
+
+  if (pendingMutationCount.value > 0) {
+    return 'Sync ausstehend'
+  }
+
+  return 'Online'
+})
+const syncStatusClass = computed(() => {
+  if (isSyncing.value) {
+    return 'sync-chip-syncing'
+  }
+
+  if (!isOnline.value) {
+    return pendingMutationCount.value > 0 ? 'sync-chip-pending' : 'sync-chip-offline'
+  }
+
+  if (pendingMutationCount.value > 0) {
+    return 'sync-chip-pending'
+  }
+
+  return 'sync-chip-online'
+})
+const offlineSnapshotLabel = computed(() => {
+  if (!offlineSnapshotAt.value) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('de-AT', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(offlineSnapshotAt.value))
+})
+
+function isOfflineError(err: unknown) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return true
+  }
+
+  if (err instanceof TypeError) {
+    return true
+  }
+
+  return err instanceof Error && /fetch|network|offline|load/i.test(err.message)
+}
+
+function isTempId(id: string) {
+  return id.startsWith('offline-')
+}
+
+function currentMonthCacheKey() {
+  return `dashboard:month:${currentYear.value}-${String(currentMonth.value).padStart(2, '0')}`
+}
+
+function persistCurrentMonthSnapshot() {
+  saveOfflineCache(currentMonthCacheKey(), {
+    events: events.value,
+    mealPlans: mealPlans.value,
+  })
+}
+
+function sortEvents() {
+  events.value.sort((left, right) => {
+    if (left.date !== right.date) {
+      return left.date.localeCompare(right.date)
+    }
+
+    return (left.startTime ?? '').localeCompare(right.startTime ?? '')
+  })
+}
+
+function sortMeals() {
+  mealPlans.value.sort((left, right) => {
+    if (left.date !== right.date) {
+      return left.date.localeCompare(right.date)
+    }
+
+    return left.mealType.localeCompare(right.mealType)
+  })
+}
+
+function refreshDashboardSnapshot() {
+  sortEvents()
+  sortMeals()
+  persistCurrentMonthSnapshot()
+}
+
+function readPendingMutations() {
+  return readOfflineMutations<DashboardMutation>('dashboard')
+}
+
+function writePendingMutations(entries: ReturnType<typeof readPendingMutations>) {
+  writeOfflineMutations('dashboard', entries)
+  pendingMutationCount.value = entries.length
+}
+
+function refreshPendingMutationCount() {
+  pendingMutationCount.value = readPendingMutations().length
+}
+
+function persistCalendarSubscriptions() {
+  saveOfflineCache('dashboard:calendar-subscriptions', calendarSubscriptions.value)
+}
+
+function getRecipeName(recipeId: string) {
+  return recipes.value.find((recipe) => recipe.id === recipeId)?.name ?? 'Rezept'
+}
+
+function removeQueuedCreateEvent(eventId: string) {
+  const entries = readPendingMutations().filter(
+    (entry) => !(entry.mutation.type === 'createEvent' && entry.mutation.eventId === eventId),
+  )
+  writePendingMutations(entries)
+}
+
+function removeQueuedCreateMeal(mealId: string) {
+  const entries = readPendingMutations().filter(
+    (entry) =>
+      !(
+        (entry.mutation.type === 'createMeal' && entry.mutation.mealId === mealId) ||
+        (entry.mutation.type === 'completeMeal' && entry.mutation.mealId === mealId)
+      ),
+  )
+  writePendingMutations(entries)
+}
+
+function removeQueuedCreateSubscription(subscriptionId: string) {
+  const entries = readPendingMutations().filter(
+    (entry) =>
+      !(
+        (entry.mutation.type === 'createSubscription' &&
+          entry.mutation.subscriptionId === subscriptionId) ||
+        (entry.mutation.type === 'deleteSubscription' &&
+          entry.mutation.subscriptionId === subscriptionId)
+      ),
+  )
+  writePendingMutations(entries)
+}
+
+async function syncPendingDashboardMutations() {
+  const entries = readPendingMutations()
+
+  if (entries.length === 0) {
+    return
+  }
+
+  isSyncing.value = true
+  const remaining = [...entries]
+  const mealIdMap = new Map<string, string>()
+  const subscriptionIdMap = new Map<string, string>()
+  let syncedAny = false
+
+  while (remaining.length > 0) {
+    const current = remaining[0]
+    if (!current) {
+      break
+    }
+
+    try {
+      switch (current.mutation.type) {
+        case 'createEvent':
+          await apiFetch<CalendarEvent>('/CalendarEvents', {
+            method: 'POST',
+            body: JSON.stringify(current.mutation.payload),
+          })
+          break
+        case 'deleteEvent':
+          await apiFetch(`/CalendarEvents/${current.mutation.eventId}`, {
+            method: 'DELETE',
+          })
+          break
+        case 'createMeal': {
+          const createdMeal = await apiFetch<MealPlan>('/mealPlans', {
+            method: 'POST',
+            body: JSON.stringify(current.mutation.payload),
+          })
+          mealIdMap.set(current.mutation.mealId, createdMeal.id)
+          break
+        }
+        case 'deleteMeal': {
+          const resolvedMealId = mealIdMap.get(current.mutation.mealId) ?? current.mutation.mealId
+          await apiFetch(`/MealPlans/${resolvedMealId}`, {
+            method: 'DELETE',
+          })
+          break
+        }
+        case 'completeMeal': {
+          const resolvedMealId = mealIdMap.get(current.mutation.mealId) ?? current.mutation.mealId
+          await apiFetch(`/MealPlans/${resolvedMealId}/complete`, {
+            method: 'POST',
+          })
+          break
+        }
+        case 'createSubscription': {
+          const createdSubscription = await apiFetch<CalendarSubscription>('/CalendarEvents/subscriptions', {
+            method: 'POST',
+            body: JSON.stringify({ url: current.mutation.url }),
+          })
+          subscriptionIdMap.set(current.mutation.subscriptionId, createdSubscription.id)
+          break
+        }
+        case 'deleteSubscription': {
+          const resolvedSubscriptionId =
+            subscriptionIdMap.get(current.mutation.subscriptionId) ?? current.mutation.subscriptionId
+          await apiFetch(`/CalendarEvents/subscriptions/${resolvedSubscriptionId}`, {
+            method: 'DELETE',
+          })
+          break
+        }
+      }
+
+      remaining.shift()
+      syncedAny = true
+    } catch (err) {
+      if (
+        current.mutation.type !== 'createEvent' &&
+        current.mutation.type !== 'createMeal' &&
+        current.mutation.type !== 'createSubscription' &&
+        err instanceof Error &&
+        err.message.toLowerCase().includes('nicht gefunden')
+      ) {
+        remaining.shift()
+        syncedAny = true
+        continue
+      }
+
+      if (isOfflineError(err)) {
+        break
+      }
+
+      error.value = err instanceof Error ? err.message : 'Offline-Sync fuer Dashboard fehlgeschlagen.'
+      break
+    }
+  }
+
+  writePendingMutations(remaining)
+  isSyncing.value = false
+
+  if (syncedAny) {
+    success.value = 'Offline-Aenderungen im Dashboard wurden synchronisiert.'
+    await loadDashboardData()
+  }
+}
+
+async function handleOnlineDashboardSync() {
+  isOnline.value = true
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return
+  }
+
+  await syncPendingDashboardMutations()
+}
+
+function handleOfflineDashboardMode() {
+  isOnline.value = false
+}
 
 const calendarDays = computed(() => {
   const firstDay = new Date(currentYear.value, currentMonth.value - 1, 1)
@@ -492,7 +825,19 @@ function getMealsForDay(isoDate: string) {
 }
 
 async function loadCalendarSubscriptions() {
-  calendarSubscriptions.value = await apiFetch<CalendarSubscription[]>('/CalendarEvents/subscriptions')
+  try {
+    const data = await apiFetch<CalendarSubscription[]>('/CalendarEvents/subscriptions')
+    calendarSubscriptions.value = data
+    persistCalendarSubscriptions()
+  } catch (err) {
+    const cached = readOfflineCache<CalendarSubscription[]>('dashboard:calendar-subscriptions')
+    if (!cached) {
+      throw err
+    }
+
+    calendarSubscriptions.value = cached.value
+    offlineSnapshotAt.value = offlineSnapshotAt.value ?? cached.updatedAt
+  }
 }
 
 async function addSubscription() {
@@ -522,7 +867,27 @@ async function addSubscription() {
     })
     await loadCalendarSubscriptions()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht gespeichert werden.'
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht gespeichert werden.'
+      return
+    }
+
+    const tempSubscriptionId = makeTempId('offline-subscription')
+    enqueueOfflineMutation<DashboardMutation>('dashboard', {
+      type: 'createSubscription',
+      subscriptionId: tempSubscriptionId,
+      url,
+    })
+    refreshPendingMutationCount()
+
+    calendarSubscriptions.value.push({
+      id: tempSubscriptionId,
+      url,
+      createdAt: new Date().toISOString(),
+    })
+    persistCalendarSubscriptions()
+    subscriptionUrl.value = ''
+    success.value = 'Kalender-Abo offline gespeichert.'
     return
   }
 
@@ -535,11 +900,31 @@ async function removeSubscription(id: string) {
   error.value = ''
   success.value = ''
 
+  if (isTempId(id)) {
+    removeQueuedCreateSubscription(id)
+    calendarSubscriptions.value = calendarSubscriptions.value.filter((subscription) => subscription.id !== id)
+    persistCalendarSubscriptions()
+    success.value = 'Lokales Kalender-Abo wurde entfernt.'
+    return
+  }
+
   try {
     await apiFetch(`/CalendarEvents/subscriptions/${id}`, { method: 'DELETE' })
     await loadCalendarSubscriptions()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht entfernt werden.'
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht entfernt werden.'
+      return
+    }
+
+    enqueueOfflineMutation<DashboardMutation>('dashboard', {
+      type: 'deleteSubscription',
+      subscriptionId: id,
+    })
+    refreshPendingMutationCount()
+    calendarSubscriptions.value = calendarSubscriptions.value.filter((subscription) => subscription.id !== id)
+    persistCalendarSubscriptions()
+    success.value = 'Kalender-Abo offline entfernt und zum Sync vorgemerkt.'
     return
   }
 
@@ -610,37 +995,84 @@ function openEventModal() {
 }
 
 async function loadMonthData() {
+  const cacheKey = currentMonthCacheKey()
   const subscriptions = calendarSubscriptions.value.map((subscription) => subscription.url)
-  const [eventData, mealData] = await Promise.all([
-    apiFetch<CalendarEvent[]>(`/CalendarEvents?year=${currentYear.value}&month=${currentMonth.value}`),
-    apiFetch<MealPlan[]>(`/MealPlans/month?year=${currentYear.value}&month=${currentMonth.value}`),
-  ])
 
-  let importedData: CalendarSubscriptionPreview[] = []
-  if (subscriptions.length > 0) {
-    try {
-      importedData = await apiFetch<CalendarSubscriptionPreview[]>('/CalendarEvents/imported', {
-        method: 'POST',
-        body: JSON.stringify({
-          year: currentYear.value,
-          month: currentMonth.value,
-          urls: subscriptions,
-        }),
-      })
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht geladen werden.'
+  try {
+    const [eventData, mealData] = await Promise.all([
+      apiFetch<CalendarEvent[]>(`/CalendarEvents?year=${currentYear.value}&month=${currentMonth.value}`),
+      apiFetch<MealPlan[]>(`/MealPlans/month?year=${currentYear.value}&month=${currentMonth.value}`),
+    ])
+
+    let importedData: CalendarSubscriptionPreview[] = []
+    if (subscriptions.length > 0) {
+      try {
+        importedData = await apiFetch<CalendarSubscriptionPreview[]>('/CalendarEvents/imported', {
+          method: 'POST',
+          body: JSON.stringify({
+            year: currentYear.value,
+            month: currentMonth.value,
+            urls: subscriptions,
+          }),
+        })
+      } catch (err) {
+        error.value = err instanceof Error ? err.message : 'Kalender-Abo konnte nicht geladen werden.'
+      }
     }
-  }
 
-  events.value = [
-    ...(eventData ?? []),
-    ...((importedData ?? []).flatMap((subscription) => subscription.events)),
-  ]
-  mealPlans.value = mealData ?? []
+    events.value = [
+      ...(eventData ?? []),
+      ...((importedData ?? []).flatMap((subscription) => subscription.events)),
+    ]
+    mealPlans.value = mealData ?? []
+    offlineSnapshotAt.value = null
+    saveOfflineCache(cacheKey, {
+      events: events.value,
+      mealPlans: mealPlans.value,
+    })
+  } catch (err) {
+    const cached = readOfflineCache<{
+      events: CalendarEvent[]
+      mealPlans: MealPlan[]
+    }>(cacheKey)
+
+    if (!cached) {
+      throw err
+    }
+
+    events.value = cached.value.events
+    mealPlans.value = cached.value.mealPlans
+    offlineSnapshotAt.value = cached.updatedAt
+    error.value = 'Offline-Modus: Es werden die zuletzt geladenen Kalender- und Meal-Daten angezeigt.'
+  }
 }
 
 async function loadRecipes() {
-  recipes.value = await apiFetch<Recipe[]>('/recipes')
+  try {
+    const data = await apiFetch<Recipe[]>('/recipes')
+    recipes.value = data
+    saveOfflineCache('dashboard:recipes', data)
+  } catch (err) {
+    const cached = readOfflineCache<Recipe[]>('dashboard:recipes')
+    if (!cached) {
+      throw err
+    }
+
+    recipes.value = cached.value
+    offlineSnapshotAt.value = offlineSnapshotAt.value ?? cached.updatedAt
+  }
+}
+
+async function loadDashboardData() {
+  error.value = ''
+  offlineSnapshotAt.value = null
+
+  try {
+    await Promise.all([loadCalendarSubscriptions(), loadRecipes()])
+    await loadMonthData()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Dashboard konnte nicht geladen werden.'
+  }
 }
 
 async function createEvent() {
@@ -706,7 +1138,42 @@ async function createEvent() {
       ),
     )
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Termin konnte nicht gespeichert werden.'
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Termin konnte nicht gespeichert werden.'
+      return
+    }
+
+    for (const date of dates) {
+      const tempEventId = makeTempId('offline-event')
+      enqueueOfflineMutation<DashboardMutation>('dashboard', {
+        type: 'createEvent',
+        eventId: tempEventId,
+        payload: {
+          date,
+          title,
+          startTime: toBackendTimeValue(startTime || ''),
+          endTime: toBackendTimeValue(endTime || ''),
+          notes: eventForm.value.notes.trim() || null,
+        },
+      })
+
+      events.value.push({
+        id: tempEventId,
+        date,
+        title,
+        startTime: toBackendTimeValue(startTime || ''),
+        endTime: toBackendTimeValue(endTime || ''),
+        notes: eventForm.value.notes.trim() || null,
+      })
+    }
+
+    refreshPendingMutationCount()
+    refreshDashboardSnapshot()
+    showEventModal.value = false
+    success.value = dates.length === 1
+      ? 'Termin offline gespeichert.'
+      : `${dates.length} Termine offline gespeichert.`
+    resetEventForm()
     return
   }
 
@@ -719,10 +1186,31 @@ async function createEvent() {
 async function deleteEvent(id: string) {
   error.value = ''
   success.value = ''
+
+  if (isTempId(id)) {
+    removeQueuedCreateEvent(id)
+    events.value = events.value.filter((event) => event.id !== id)
+    refreshDashboardSnapshot()
+    success.value = 'Lokaler Termin wurde entfernt.'
+    return
+  }
+
   try {
     await apiFetch(`/CalendarEvents/${id}`, { method: 'DELETE' })
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Termin konnte nicht gelöscht werden.'
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Termin konnte nicht gelöscht werden.'
+      return
+    }
+
+    enqueueOfflineMutation<DashboardMutation>('dashboard', {
+      type: 'deleteEvent',
+      eventId: id,
+    })
+    refreshPendingMutationCount()
+    events.value = events.value.filter((event) => event.id !== id)
+    refreshDashboardSnapshot()
+    success.value = 'Termin offline entfernt und zum Sync vorgemerkt.'
     return
   }
   success.value = 'Termin gelöscht.'
@@ -732,16 +1220,56 @@ async function deleteEvent(id: string) {
 async function createMeal() {
   error.value = ''
   success.value = ''
-  await apiFetch('/mealPlans', {
-    method: 'POST',
-    body: JSON.stringify({
-      date: selectedDate.value,
-      mealType: mealForm.value.mealType,
-      servings: mealForm.value.servings,
-      notes: mealForm.value.notes || null,
-      recipeId: mealForm.value.recipeId,
-    }),
-  })
+  const payload: MealPayload = {
+    date: selectedDate.value,
+    mealType: mealForm.value.mealType,
+    servings: mealForm.value.servings,
+    notes: mealForm.value.notes || null,
+    recipeId: mealForm.value.recipeId,
+  }
+
+  try {
+    await apiFetch('/mealPlans', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  } catch (err) {
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Meal konnte nicht gespeichert werden.'
+      return
+    }
+
+    const tempMealId = makeTempId('offline-meal')
+    enqueueOfflineMutation<DashboardMutation>('dashboard', {
+      type: 'createMeal',
+      mealId: tempMealId,
+      payload,
+    })
+    refreshPendingMutationCount()
+
+    mealPlans.value.push({
+      id: tempMealId,
+      date: payload.date,
+      mealType: payload.mealType,
+      servings: payload.servings,
+      notes: payload.notes ?? null,
+      isCompleted: false,
+      recipeId: payload.recipeId,
+      recipeName: getRecipeName(payload.recipeId),
+    })
+    refreshDashboardSnapshot()
+
+    mealForm.value = {
+      recipeId: '',
+      mealType: 'Dinner',
+      servings: 1,
+      notes: '',
+    }
+
+    showMealModal.value = false
+    success.value = 'Meal offline gespeichert.'
+    return
+  }
 
   mealForm.value = {
     recipeId: '',
@@ -758,9 +1286,35 @@ async function createMeal() {
 async function deleteMeal(id: string) {
   error.value = ''
   success.value = ''
-  await apiFetch(`/MealPlans/${id}`, {
-    method: 'DELETE',
-  })
+
+  if (isTempId(id)) {
+    removeQueuedCreateMeal(id)
+    mealPlans.value = mealPlans.value.filter((meal) => meal.id !== id)
+    refreshDashboardSnapshot()
+    success.value = 'Lokales Meal wurde entfernt.'
+    return
+  }
+
+  try {
+    await apiFetch(`/MealPlans/${id}`, {
+      method: 'DELETE',
+    })
+  } catch (err) {
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Meal konnte nicht gelöscht werden.'
+      return
+    }
+
+    enqueueOfflineMutation<DashboardMutation>('dashboard', {
+      type: 'deleteMeal',
+      mealId: id,
+    })
+    refreshPendingMutationCount()
+    mealPlans.value = mealPlans.value.filter((meal) => meal.id !== id)
+    refreshDashboardSnapshot()
+    success.value = 'Meal offline entfernt und zum Sync vorgemerkt.'
+    return
+  }
 
   success.value = 'Meal gelöscht.'
   await loadMonthData()
@@ -770,12 +1324,40 @@ async function completeMeal(id: string) {
   error.value = ''
   success.value = ''
 
+  if (isTempId(id)) {
+    enqueueOfflineMutation<DashboardMutation>('dashboard', {
+      type: 'completeMeal',
+      mealId: id,
+    })
+    refreshPendingMutationCount()
+    mealPlans.value = mealPlans.value.map((meal) =>
+      meal.id === id ? { ...meal, isCompleted: true } : meal,
+    )
+    refreshDashboardSnapshot()
+    success.value = 'Meal offline als erledigt markiert.'
+    return
+  }
+
   try {
     await apiFetch(`/MealPlans/${id}/complete`, {
       method: 'POST',
     })
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Meal konnte nicht abgeschlossen werden.'
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Meal konnte nicht abgeschlossen werden.'
+      return
+    }
+
+    enqueueOfflineMutation<DashboardMutation>('dashboard', {
+      type: 'completeMeal',
+      mealId: id,
+    })
+    refreshPendingMutationCount()
+    mealPlans.value = mealPlans.value.map((meal) =>
+      meal.id === id ? { ...meal, isCompleted: true } : meal,
+    )
+    refreshDashboardSnapshot()
+    success.value = 'Meal offline als erledigt markiert und zum Sync vorgemerkt.'
     return
   }
 
@@ -809,7 +1391,13 @@ function goToToday() {
 }
 
 watch([currentYear, currentMonth], async () => {
-  await loadMonthData()
+  error.value = ''
+
+  try {
+    await loadMonthData()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Kalenderdaten konnten nicht geladen werden.'
+  }
 })
 
 watch(selectedDate, () => {
@@ -840,9 +1428,17 @@ watch(() => eventForm.value.isAllDay, (isAllDay) => {
 })
 
 onMounted(async () => {
+  refreshPendingMutationCount()
+  window.addEventListener('online', handleOnlineDashboardSync)
+  window.addEventListener('offline', handleOfflineDashboardMode)
   resetEventForm()
-  await Promise.all([loadCalendarSubscriptions(), loadRecipes()])
-  await loadMonthData()
+  await loadDashboardData()
+  await syncPendingDashboardMutations()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('online', handleOnlineDashboardSync)
+  window.removeEventListener('offline', handleOfflineDashboardMode)
 })
 </script>
 
@@ -902,6 +1498,42 @@ onMounted(async () => {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.sync-chip-online {
+  background: rgba(16,185,129,0.12);
+  color: #10b981;
+  border-color: rgba(16,185,129,0.22);
+}
+
+.sync-chip-offline {
+  background: rgba(107,114,128,0.12);
+  color: #6b7280;
+  border-color: rgba(107,114,128,0.2);
+}
+
+.sync-chip-pending {
+  background: rgba(245,158,11,0.12);
+  color: #d97706;
+  border-color: rgba(245,158,11,0.22);
+}
+
+.sync-chip-syncing {
+  background: rgba(59,130,246,0.12);
+  color: #2563eb;
+  border-color: rgba(59,130,246,0.22);
 }
 
 .btn-secondary,

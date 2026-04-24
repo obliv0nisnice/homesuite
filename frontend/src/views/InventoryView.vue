@@ -39,21 +39,26 @@ const editItem = ref({
 
 const totalItems = computed(() => items.value.length)
 
-const newItemSuggestions = computed(() => {
-  const query = newItem.value.name.trim().toLowerCase()
+function getCatalogSuggestions(query: string) {
+  const normalizedQuery = query.trim().toLowerCase()
 
   return catalogItems.value
-    .filter((item) => !query || item.name.toLowerCase().includes(query))
-    .slice(0, 8)
-})
+    .filter((item) => !normalizedQuery || item.name.toLowerCase().includes(normalizedQuery))
+    .sort((left, right) => {
+      const leftStartsWith = left.name.toLowerCase().startsWith(normalizedQuery)
+      const rightStartsWith = right.name.toLowerCase().startsWith(normalizedQuery)
 
-const editItemSuggestions = computed(() => {
-  const query = editItem.value.name.trim().toLowerCase()
+      if (leftStartsWith !== rightStartsWith) {
+        return leftStartsWith ? -1 : 1
+      }
 
-  return catalogItems.value
-    .filter((item) => !query || item.name.toLowerCase().includes(query))
+      return left.name.localeCompare(right.name, 'de')
+    })
     .slice(0, 8)
-})
+}
+
+const newItemSuggestions = computed(() => getCatalogSuggestions(newItem.value.name))
+const editItemSuggestions = computed(() => getCatalogSuggestions(editItem.value.name))
 
 function applyCatalogSuggestion(target: { name: string; unit: string }) {
   const matchingCatalogItem = catalogItems.value.find(
@@ -227,7 +232,7 @@ onMounted(loadData)
               type="text"
               placeholder="Name"
               required
-              @change="applyCatalogSuggestion(newItem)"
+              @input="applyCatalogSuggestion(newItem)"
             />
             <input v-model="newItem.quantity" type="number" min="0" step="0.01" placeholder="Menge" required />
             <input v-model="newItem.unit" type="text" placeholder="Einheit" required />
@@ -240,9 +245,12 @@ onMounted(loadData)
         </form>
       </div>
       <datalist id="inventory-catalog-suggestions">
-        <option v-for="item in newItemSuggestions" :key="item.id" :value="item.name">
-          {{ item.defaultUnit }}
-        </option>
+        <option
+          v-for="item in newItemSuggestions"
+          :key="item.id"
+          :value="item.name"
+          :label="`${item.name} · ${item.defaultUnit}`"
+        />
       </datalist>
 
       <div class="data-card">
@@ -271,7 +279,7 @@ onMounted(loadData)
                     v-model="editItem.name"
                     list="inventory-edit-catalog-suggestions"
                     type="text"
-                    @change="applyCatalogSuggestion(editItem)"
+                    @input="applyCatalogSuggestion(editItem)"
                   />
                 </td>
                 <td><input v-model="editItem.quantity" type="number" min="0" step="0.01" /></td>
@@ -299,9 +307,12 @@ onMounted(loadData)
 
         <div v-else class="empty-state">Noch keine Inventar-Einträge vorhanden.</div>
         <datalist id="inventory-edit-catalog-suggestions">
-          <option v-for="item in editItemSuggestions" :key="item.id" :value="item.name">
-            {{ item.defaultUnit }}
-          </option>
+          <option
+            v-for="item in editItemSuggestions"
+            :key="item.id"
+            :value="item.name"
+            :label="`${item.name} · ${item.defaultUnit}`"
+          />
         </datalist>
       </div>
     </div>
