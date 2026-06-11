@@ -19,6 +19,12 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
         @"(?:je|per)\s*1\s*(l|liter|kg|100\s*g|100g|stk|stück)\s*(\d{1,3},\d{2})\s*€?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // Steht direkt vor einem Preis "je 1 Stk" o. Ä., ist es ein Grundpreis und
+    // darf nicht als Produktpreis gewertet werden.
+    private static readonly Regex UnitPriceContextRegex = new(
+        @"(?:je|per)\s*1\s*(?:l|liter|kg|100\s*g|100g|stk|stück|st|wl)\.?\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     protected HttpClient HttpClient { get; }
     protected ILogger Logger { get; }
     protected IPlaywrightStoreSearchService? PlaywrightSearchService { get; }
@@ -126,9 +132,14 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
         httpRequest.Headers.AcceptLanguage.ParseAdd("de-AT,de;q=0.9,en;q=0.8");
 
         using var response = await HttpClient.SendAsync(httpRequest, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        // DuckDuckGo beantwortet Bot-Verdacht mit 202 + Anomaly-Seite — das ist
+        // "IsSuccessStatusCode", enthält aber keine Suchergebnisse.
+        if (response.StatusCode != System.Net.HttpStatusCode.OK)
         {
-            Logger.LogWarning("{StoreName}-Suchrequest fehlgeschlagen: {StatusCode}", StoreName, response.StatusCode);
+            Logger.LogWarning(
+                "{StoreName}-Websuche abgewiesen (vermutlich Bot-Erkennung): {StatusCode}",
+                StoreName,
+                response.StatusCode);
             return [];
         }
 
@@ -300,6 +311,7 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
     protected static decimal? ExtractDisplayPrice(string text)
     {
         var values = PriceRegex.Matches(text)
+            .Where(m => !IsUnitPriceContext(text, m.Index))
             .Select(m => ParseDecimal(m.Groups[1].Value))
             .Where(v => v.HasValue)
             .Select(v => v!.Value)
@@ -307,6 +319,12 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
             .ToList();
 
         return values.Count == 0 ? null : values.Min();
+    }
+
+    protected static bool IsUnitPriceContext(string text, int priceIndex)
+    {
+        var contextStart = Math.Max(0, priceIndex - 20);
+        return UnitPriceContextRegex.IsMatch(text[contextStart..priceIndex]);
     }
 
     protected static decimal? ExtractUnitPrice(string text)

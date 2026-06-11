@@ -1,3 +1,4 @@
+using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
 using HomeSuite.Application.Interfaces;
 
@@ -28,13 +29,7 @@ public class BipaPriceCrawlerSource : HtmlSearchPriceCrawlerSourceBase
 
         try
         {
-            var searchUrl = $"https://www.bipa.at/suche?q={Uri.EscapeDataString(request.Query.Trim())}";
-            var directUrls = await SearchProductUrlsWithPlaywrightAsync(
-                searchUrl,
-                ["/p/"],
-                url => url.Contains("/p/", StringComparison.OrdinalIgnoreCase),
-                cancellationToken);
-
+            var directUrls = await SearchDirectProductUrlsAsync(request, cancellationToken);
             if (directUrls.Count > 0)
             {
                 return await BuildRankedResultsAsync(directUrls, request, cancellationToken);
@@ -46,9 +41,51 @@ public class BipaPriceCrawlerSource : HtmlSearchPriceCrawlerSourceBase
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "BIPA-Direktsuche via Playwright fehlgeschlagen für Query '{Query}', Fallback auf Websuche.", request.Query);
+            Logger.LogWarning(ex, "BIPA-Direktsuche fehlgeschlagen für Query '{Query}', Fallback auf Websuche.", request.Query);
         }
 
         return await base.SearchAsync(request, cancellationToken);
+    }
+
+    // Die BIPA-Suchseite ist serverseitig gerendert und enthält die /p/-Produktlinks
+    // direkt im HTML — kein Browser nötig.
+    private async Task<List<string>> SearchDirectProductUrlsAsync(
+        CrawledCatalogPriceRequest request,
+        CancellationToken cancellationToken)
+    {
+        var searchUrl = $"https://www.bipa.at/suche?q={Uri.EscapeDataString(request.Query.Trim())}";
+
+        using var response = await HttpClient.GetAsync(searchUrl, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            Logger.LogWarning("BIPA-Suchrequest fehlgeschlagen: {StatusCode}", response.StatusCode);
+            return [];
+        }
+
+        var html = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return [];
+        }
+
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
+
+        var anchors = doc.DocumentNode.SelectNodes("//a[@href]");
+        if (anchors is null || anchors.Count == 0)
+        {
+            return [];
+        }
+
+        return anchors
+            .Select(a => a.GetAttributeValue("href", string.Empty))
+            .Where(href => href.Contains("/p/", StringComparison.OrdinalIgnoreCase))
+            .Select(href => href.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? href
+                : $"https://www.bipa.at{href}")
+            .Where(IsStoreUrl)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToList();
     }
 }

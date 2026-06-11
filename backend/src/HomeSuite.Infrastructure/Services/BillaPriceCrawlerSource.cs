@@ -23,6 +23,12 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
         @"1\s*(liter|l|kg|100\s*g|100g|stk|stück)\s+(\d{1,3},\d{2})\s*€",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // Steht direkt vor einem Preis "je 1 Stk" o. Ä., ist es ein Grundpreis und
+    // darf nicht als Produktpreis gewertet werden.
+    private static readonly Regex UnitPriceContextRegex = new(
+        @"(?:je|per)?\s*1\s*(?:liter|l|kg|100\s*g|100g|stk|stück|st|wl)\.?\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private readonly HttpClient _httpClient;
     private readonly ILogger<BillaPriceCrawlerSource> _logger;
 
@@ -280,6 +286,7 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
         }
 
         var values = matches
+            .Where(m => !IsUnitPriceContext(text, m.Index))
             .Select(m => ParseDecimal(m.Groups[1].Value))
             .Where(v => v.HasValue)
             .Select(v => v!.Value)
@@ -292,6 +299,12 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
         }
 
         return values.Min();
+    }
+
+    private static bool IsUnitPriceContext(string text, int priceIndex)
+    {
+        var contextStart = Math.Max(0, priceIndex - 20);
+        return UnitPriceContextRegex.IsMatch(text[contextStart..priceIndex]);
     }
 
     private static decimal? ExtractUnitPrice(string text)

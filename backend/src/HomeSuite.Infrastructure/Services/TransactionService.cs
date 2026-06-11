@@ -88,6 +88,25 @@ public class TransactionService : ITransactionService
         };
 
         _dbContext.Transactions.Add(transaction);
+
+        // Wiederkehrende Transaktionen sind reine Vorlagen und zählen nicht als
+        // Buchung — die erste Monats-Buchung entsteht sofort als eigene Zeile,
+        // damit sie einzeln (nur für diesen Monat) bearbeitbar ist.
+        if (transaction.IsRecurring)
+        {
+            _dbContext.Transactions.Add(new Transaction
+            {
+                Title = transaction.Title,
+                Amount = transaction.Amount,
+                Date = transaction.Date,
+                Note = transaction.Note,
+                CategoryId = transaction.CategoryId,
+                IsRecurring = false,
+                RecurringInterval = null,
+                NextDueDate = null
+            });
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new TransactionDto
@@ -126,6 +145,10 @@ public class TransactionService : ITransactionService
             throw new InvalidOperationException("Die angegebene Kategorie existiert nicht.");
         }
 
+        var wasRecurring = transaction.IsRecurring;
+        var previousInterval = transaction.RecurringInterval;
+        var previousDate = transaction.Date;
+
         transaction.Title = request.Title.Trim();
         transaction.Amount = NormalizeAmount(request.Amount, category.Type);
         transaction.Date = NormalizeDate(request.Date);
@@ -133,7 +156,38 @@ public class TransactionService : ITransactionService
         transaction.CategoryId = request.CategoryId;
         transaction.IsRecurring = request.IsRecurring;
         transaction.RecurringInterval = NormalizeRecurringInterval(request.IsRecurring, request.RecurringInterval);
-        transaction.NextDueDate = CalculateFirstNextDueDate(transaction.Date, transaction.RecurringInterval);
+
+        // Fälligkeit nur neu berechnen, wenn sich der Zeitplan tatsächlich ändert.
+        // Ein pauschales Zurücksetzen würde bei jeder Bearbeitung alle seit dem
+        // Startdatum vergangenen Intervalle erneut auslösen (Duplikat-Buchungen).
+        if (!transaction.IsRecurring)
+        {
+            transaction.NextDueDate = null;
+        }
+        else if (!wasRecurring
+            || transaction.RecurringInterval != previousInterval
+            || transaction.Date != previousDate
+            || transaction.NextDueDate is null)
+        {
+            transaction.NextDueDate = CalculateFirstNextDueDate(transaction.Date, transaction.RecurringInterval);
+        }
+
+        // Wird eine bestehende Buchung zur Vorlage, bleibt die Buchung selbst als
+        // eigene Zeile erhalten (Vorlagen zählen nicht als Buchung).
+        if (!wasRecurring && transaction.IsRecurring)
+        {
+            _dbContext.Transactions.Add(new Transaction
+            {
+                Title = transaction.Title,
+                Amount = transaction.Amount,
+                Date = transaction.Date,
+                Note = transaction.Note,
+                CategoryId = transaction.CategoryId,
+                IsRecurring = false,
+                RecurringInterval = null,
+                NextDueDate = null
+            });
+        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

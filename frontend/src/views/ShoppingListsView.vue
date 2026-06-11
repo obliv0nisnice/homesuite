@@ -231,6 +231,19 @@ const editItem = ref({
   isChecked: false,
 })
 
+// Preisoptionen pro Artikel eingeklappt — der Zettel bleibt dadurch übersichtlich.
+const expandedPriceItemIds = ref<Set<string>>(new Set())
+
+function togglePriceOptions(itemId: string) {
+  const expanded = new Set(expandedPriceItemIds.value)
+  if (expanded.has(itemId)) {
+    expanded.delete(itemId)
+  } else {
+    expanded.add(itemId)
+  }
+  expandedPriceItemIds.value = expanded
+}
+
 const newPriceOptionByItemId = ref<Record<string, {
   storeName: string
   productName: string
@@ -2369,6 +2382,9 @@ onUnmounted(() => {
 
               <div class="actions grocery-actions">
                 <button class="btn-secondary" @click="startEditItem(item)">Echten Einkauf pflegen</button>
+                <button class="btn-secondary" @click="togglePriceOptions(item.id)">
+                  {{ expandedPriceItemIds.has(item.id) ? '▾' : '▸' }} Preisoptionen ({{ item.priceOptions.length }})
+                </button>
                 <button class="btn-danger" @click="deleteItem(item.id)">Löschen</button>
               </div>
             </div>
@@ -2385,7 +2401,7 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="price-board">
+            <div v-if="expandedPriceItemIds.has(item.id)" class="price-board">
               <div class="card-header">
                 <h3 class="card-title" style="font-size:16px;">Preisoptionen</h3>
               </div>
@@ -3151,8 +3167,8 @@ textarea {
   background: rgba(255,252,245,0.94);
   border: 1px solid rgba(120, 93, 51, 0.14);
   border-radius: 10px;
-  padding: 16px 18px 14px 18px;
-  box-shadow: 0 8px 20px rgba(64, 43, 10, 0.08);
+  padding: 14px 16px 12px;
+  box-shadow: 0 3px 10px rgba(64, 43, 10, 0.06);
 }
 
 .grocery-row::before {
@@ -3264,10 +3280,10 @@ textarea {
 }
 
 .grocery-footer {
-  margin-top: 14px;
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .grocery-row.checked .grocery-name,
@@ -3279,7 +3295,7 @@ textarea {
 
 .grocery-meta {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;

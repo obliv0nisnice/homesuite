@@ -31,6 +31,7 @@ type CategorySummary = {
   icon: string
   amount: number
   limit: number
+  hasCustomLimit: boolean
   color: string
 }
 
@@ -100,8 +101,10 @@ const barRef = ref<HTMLCanvasElement | null>(null)
 
 // ─── Computed ─────────────────────────────────────────────────────────────────
 
+// Vorlagen (isRecurring) sind keine Buchungen — die Monats-Buchungen entstehen
+// als eigene Zeilen und sind dadurch einzeln (nur für den Monat) bearbeitbar.
 const monthTransactions = computed(() =>
-  transactions.value.filter((tx) => isInSelectedMonth(tx.date)),
+  transactions.value.filter((tx) => !tx.isRecurring && isInSelectedMonth(tx.date)),
 )
 
 const expenseCategories = computed<CategorySummary[]>(() =>
@@ -119,6 +122,7 @@ const expenseCategories = computed<CategorySummary[]>(() =>
         icon: categoryIcons[index % categoryIcons.length] ?? '📦',
         amount: Number(spent.toFixed(2)),
         limit: derivedLimit,
+        hasCustomLimit: customLimit != null,
         color: categoryPalette[index % categoryPalette.length] ?? '#6366f1',
       }
     }),
@@ -137,6 +141,7 @@ const incomeCategories = computed<CategorySummary[]>(() =>
         icon: '💵',
         amount: Number(earned.toFixed(2)),
         limit: 0,
+        hasCustomLimit: false,
         color: incomePalette[index % incomePalette.length] ?? '#10b981',
       }
     }),
@@ -344,7 +349,10 @@ async function addTransaction() {
   }
 }
 
+const editingTemplate = ref(false)
+
 function openEditModal(tx: Transaction) {
+  editingTemplate.value = tx.isRecurring ?? false
   editTransaction.value = {
     id: tx.id,
     title: tx.title,
@@ -405,19 +413,13 @@ async function deleteTransaction(id: string) {
 }
 
 async function stopRecurring(tx: Transaction) {
+  if (!confirm(`Wiederholung für „${tx.title}" beenden? Bereits gebuchte Monate bleiben erhalten.`)) return
   stoppingRecurringId.value = tx.id
   error.value = ''
   try {
-    await apiFetch(`/transactions/${tx.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        title: tx.title, amount: tx.amount, date: tx.date,
-        note: tx.note, categoryId: tx.categoryId,
-        isRecurring: false, recurringInterval: null,
-      }),
-    })
-    const local = transactions.value.find((t) => t.id === tx.id)
-    if (local) { local.isRecurring = false; local.recurringInterval = null }
+    // Vorlagen sind keine Buchungen — Stoppen heißt: Vorlage löschen.
+    await apiFetch(`/transactions/${tx.id}`, { method: 'DELETE' })
+    transactions.value = transactions.value.filter((t) => t.id !== tx.id)
     success.value = `Wiederholung für „${tx.title}" gestoppt.`
   } catch {
     error.value = 'Wiederholung konnte nicht gestoppt werden.'
@@ -839,7 +841,10 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
         <div v-for="cat in expenseCategories" :key="cat.id" class="progress-item">
           <div class="progress-header">
             <span class="progress-name">{{ cat.icon }} {{ cat.name }}</span>
-            <span class="progress-nums"><strong>€{{ formatNum(cat.amount) }}</strong> / €{{ formatNum(cat.limit) }}</span>
+            <span class="progress-nums">
+              <strong>€{{ formatNum(cat.amount) }}</strong> / €{{ formatNum(cat.limit) }}
+              <span v-if="!cat.hasCustomLimit" class="limit-auto-tag" title="Kein eigenes Limit gesetzt — wird aus den Ausgaben abgeleitet und ändert sich monatlich. Über „Limits anpassen“ fixieren.">auto</span>
+            </span>
           </div>
           <div class="progress-track">
             <div class="progress-fill" :style="{
@@ -1056,10 +1061,14 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
       <div v-if="showEditModal && editTransaction" class="modal-backdrop" @click.self="showEditModal = false">
         <div class="modal-box">
           <div class="modal-header">
-            <h2>Transaktion bearbeiten</h2>
+            <h2>{{ editingTemplate ? '🔁 Vorlage bearbeiten' : 'Transaktion bearbeiten' }}</h2>
             <button class="modal-close" @click="showEditModal = false">✕</button>
           </div>
           <div class="modal-body">
+            <p v-if="editingTemplate" class="modal-hint">
+              Änderungen gelten für alle künftigen Buchungen. Einen einzelnen Monat
+              (z. B. geändertes Gehalt) bearbeitest du direkt in der Transaktionsliste.
+            </p>
             <div class="type-toggle">
               <button class="type-btn" :class="{ active: editTransaction.type === 'Expense' }" @click="editTransaction.type = 'Expense'">💸 Ausgabe</button>
               <button class="type-btn" :class="{ active: editTransaction.type === 'Income' }" @click="editTransaction.type = 'Income'">💵 Einnahme</button>
@@ -1089,13 +1098,14 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
               <input v-model="editTransaction.note" class="form-input" type="text" placeholder="Kurze Anmerkung …" />
             </div>
             <div class="recurring-section">
-              <label class="recurring-toggle">
+              <label v-if="!editingTemplate" class="recurring-toggle">
                 <span class="toggle-label">🔁 Wiederkehrend</span>
                 <div class="toggle-switch">
                   <input type="checkbox" v-model="editTransaction.isRecurring" />
                   <span class="toggle-slider"></span>
                 </div>
               </label>
+              <span v-else class="toggle-label">🔁 Intervall</span>
               <div v-if="editTransaction.isRecurring" class="interval-options" style="margin-top: 12px">
                 <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'weekly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="weekly" />Wöchentlich</label>
                 <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'monthly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="monthly" />Monatlich</label>
@@ -1140,6 +1150,9 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
                   <span class="recurring-amount" :class="tx.categoryType === 'Income' ? 'amount-pos' : 'amount-neg'">
                     {{ tx.categoryType === 'Income' ? '+' : '-' }}€{{ Math.abs(tx.amount).toFixed(2) }}
                   </span>
+                  <button class="btn-stop-recurring" @click="showRecurringModal = false; openEditModal(tx)">
+                    ✏️ Bearbeiten
+                  </button>
                   <button class="btn-stop-recurring" @click="stopRecurring(tx)" :disabled="stoppingRecurringId === tx.id">
                     {{ stoppingRecurringId === tx.id ? '…' : '⏹ Stoppen' }}
                   </button>
@@ -1306,6 +1319,7 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
 .progress-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
 .progress-pct { font-size: 11px; color: var(--text-muted); align-self: flex-end; }
 .progress-pct.danger { color: #ef4444; font-weight: 600; }
+.limit-auto-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; cursor: help; }
 .limit-input-row { display: flex; align-items: center; gap: 6px; }
 .limit-euro { font-size: 14px; font-weight: 600; color: var(--text-muted); flex-shrink: 0; }
 

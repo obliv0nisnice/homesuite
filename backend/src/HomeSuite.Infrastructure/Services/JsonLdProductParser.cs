@@ -83,6 +83,12 @@ public static class JsonLdProductParser
                     return FindProductNode(graph);
                 }
 
+                // BIPA u. a. verschachteln das Product als mainEntity einer WebPage.
+                if (element.TryGetProperty("mainEntity", out var mainEntity))
+                {
+                    return FindProductNode(mainEntity);
+                }
+
                 return null;
 
             default:

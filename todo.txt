@@ -1,0 +1,13 @@
+Budget
+
+- budget limits im nöchsten monat übernehmen
+- wiederkehrende auch wirklich wiederkehrend? prüfen
+- wiederkehrende (wie gehalt) die sich in der zahl geändert haben, nur für den monat anpassbar machen
+
+Einkauf
+
+- Einkaufszettel anders designen
+
+Inventar
+
+- wird die einkaufsliste also der bon richtig eingepflegt?
