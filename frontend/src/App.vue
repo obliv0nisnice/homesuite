@@ -279,18 +279,49 @@ body {
   }
 }
 
+/* Mobile: Navigation als fixe Bottom-Bar mit großen Touch-Zielen */
 @media (max-width: 768px) {
+  .top-navbar {
+    border-radius: 0;
+  }
+
   .nav-links {
-    gap: 2px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 100;
+    display: flex;
+    justify-content: space-around;
+    gap: 0;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: var(--nav-bg);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   .nav-item {
-    padding: 7px 10px;
-    font-size: 12px;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 2px;
+    font-size: 11px;
+    text-align: center;
   }
 
-  .brand-name {
-    display: none;
+  .nav-icon {
+    font-size: 20px;
+  }
+
+  .dark-toggle {
+    margin-left: auto;
+  }
+
+  .page-content {
+    padding-bottom: 84px;
   }
 }
 </style>

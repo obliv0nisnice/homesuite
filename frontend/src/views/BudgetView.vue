@@ -869,6 +869,20 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
           <span class="chart-badge">{{ filteredTransactions.length }} Einträge</span>
         </div>
       </div>
+      <form class="quick-add-bar" @submit.prevent="addTransaction">
+        <div class="type-toggle quick-type">
+          <button type="button" class="type-btn" :class="{ active: newTransaction.type === 'Expense' }" @click="newTransaction.type = 'Expense'" title="Ausgabe">💸</button>
+          <button type="button" class="type-btn" :class="{ active: newTransaction.type === 'Income' }" @click="newTransaction.type = 'Income'" title="Einnahme">💵</button>
+        </div>
+        <input v-model="newTransaction.title" class="form-input quick-title" type="text" placeholder="Beschreibung, z. B. Supermarkt" required />
+        <input v-model.number="newTransaction.amount" class="form-input quick-amount" type="number" step="0.01" min="0.01" placeholder="€ 0,00" required />
+        <select v-model="newTransaction.categoryId" class="form-input quick-cat" required>
+          <option value="" disabled>Kategorie</option>
+          <option v-for="cat in filteredCategoriesForModal" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+        </select>
+        <button class="btn-add quick-submit" type="submit">＋ Hinzufügen</button>
+      </form>
+
       <div class="tx-filter-bar">
         <input
           v-model="txSearch"
@@ -1295,6 +1309,37 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
 .limit-input-row { display: flex; align-items: center; gap: 6px; }
 .limit-euro { font-size: 14px; font-weight: 600; color: var(--text-muted); flex-shrink: 0; }
 
+/* Quick-Add: Transaktion ohne Modal direkt in der Liste anlegen */
+.quick-add-bar {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 1fr) 110px minmax(130px, 180px) auto;
+  grid-template-areas: "type title amount cat add";
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 10px;
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+.quick-type { grid-area: type; padding: 3px; background: var(--surface); }
+.quick-type .type-btn { padding: 7px 10px; font-size: 15px; }
+.quick-title { grid-area: title; }
+.quick-amount { grid-area: amount; }
+.quick-cat { grid-area: cat; }
+.quick-submit { grid-area: add; }
+
+@media (max-width: 760px) {
+  .quick-add-bar {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "type amount"
+      "title title"
+      "cat cat"
+      "add add";
+  }
+}
+
 /* Transaction table */
 .trans-table { display: flex; flex-direction: column; }
 .trans-row { display: grid; grid-template-columns: 100px 1fr 130px 110px 60px; padding: 11px 8px; border-bottom: 1px solid var(--border); align-items: center; font-size: 13px; gap: 4px; }
@@ -1386,8 +1431,26 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
 /* Responsive */
 @media (max-width: 760px) {
   .budget-page { padding: 16px 12px; }
-  .trans-row { grid-template-columns: 85px 1fr 90px 56px; }
-  .trans-row .trans-cat { display: none; }
+
+  /* Transaktionen zweizeilig: oben Titel + Betrag, unten Datum/Kategorie + Aktionen */
+  .header-row { display: none; }
+  .trans-row {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "desc desc amount"
+      "date cat actions";
+    row-gap: 8px;
+    padding: 12px 8px;
+  }
+  .trans-date { grid-area: date; font-size: 12px; align-self: center; }
+  .trans-desc { grid-area: desc; font-size: 14px; }
+  .trans-cat { grid-area: cat; align-self: center; }
+  .trans-amount { grid-area: amount; font-size: 15px; }
+  .trans-actions { grid-area: actions; }
+
+  /* Größere Touch-Ziele für Bearbeiten/Löschen/Stoppen */
+  .btn-edit, .btn-delete, .btn-stop-inline { font-size: 16px; padding: 8px 10px; }
+
   .form-row-2 { grid-template-columns: 1fr; }
   .interval-options { flex-direction: column; }
   .recurring-list-item { flex-direction: column; align-items: flex-start; }

@@ -2167,84 +2167,84 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <table v-if="shoppingLists.length > 0" class="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Erstellt</th>
-                <th>Artikel</th>
-                <th>Geschätzt</th>
-                <th>Tatsächlich</th>
-                <th>Budget</th>
-                <th>Aktionen</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="list in shoppingLists" :key="list.id">
-                <tr :class="{ selected: selectedListId === list.id }">
-                  <template v-if="editListId === list.id">
-                    <td><input v-model="editList.name" type="text" /></td>
-                    <td>{{ new Date(list.createdAt).toLocaleString() }}</td>
-                    <td>{{ list.items.length }}</td>
-                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</td>
-                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</td>
-                    <td>—</td>
-                    <td class="actions">
-                      <button class="btn-save" @click="updateList(list.id)">Speichern</button>
-                      <button class="btn-secondary" @click="cancelEditList">Abbrechen</button>
-                    </td>
-                  </template>
-                  <template v-else>
-                    <td class="clickable" @click="selectedListId = list.id"><strong>{{ list.name }}</strong></td>
-                    <td>{{ new Date(list.createdAt).toLocaleString() }}</td>
-                    <td>{{ list.items.length }}</td>
-                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</td>
-                    <td>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</td>
-                    <td>
-                      <div class="complete-budget-box">
-                        <label class="checkbox-row">
-                          <input v-model="completeAsBudgetExpense[list.id]" type="checkbox" />
-                          <span>Als Budget-Ausgabe speichern</span>
-                        </label>
-
-                        <select
-                          v-if="completeAsBudgetExpense[list.id]"
-                          v-model="selectedExpenseCategoryId[list.id]"
-                          class="budget-category-select"
-                        >
-                          <option value="">Budget-Kategorie wählen</option>
-                          <option v-for="category in expenseCategories" :key="category.id" :value="category.id">
-                            {{ category.name }}
-                          </option>
-                        </select>
-
-                        <p
-                          v-if="completeAsBudgetExpense[list.id] && budgetHintByListId[list.id]"
-                          class="budget-hint"
-                          :class="{ 'budget-hint-over': budgetHintByListId[list.id]!.over }"
-                        >
-                          {{ budgetHintByListId[list.id]!.text }}
-                        </p>
-                      </div>
-                    </td>
-                    <td class="actions">
-                      <button class="btn-secondary" @click="selectedListId = list.id">Öffnen</button>
-                      <button
-                        class="btn-secondary"
-                        @click="startReceiptScan(list.id)"
-                        :disabled="receiptScanning"
-                      >
-                        {{ receiptScanning && receiptListId === list.id ? '⏳ Scanne…' : '📷 Bon scannen' }}
-                      </button>
-                      <button class="btn-secondary" @click="startEditList(list)">Bearbeiten</button>
-                      <button class="btn-danger" @click="deleteList(list.id)">Löschen</button>
-                      <button class="btn-add" @click="completeShoppingList(list.id)">Abschließen</button>
-                    </td>
-                  </template>
-                </tr>
+          <div v-if="shoppingLists.length > 0" class="list-cards">
+            <div
+              v-for="list in shoppingLists"
+              :key="list.id"
+              class="list-card"
+              :class="{ selected: selectedListId === list.id }"
+            >
+              <template v-if="editListId === list.id">
+                <div class="form-grid full">
+                  <input v-model="editList.name" type="text" />
+                </div>
+                <div class="actions">
+                  <button class="btn-save" @click="updateList(list.id)">Speichern</button>
+                  <button class="btn-secondary" @click="cancelEditList">Abbrechen</button>
+                </div>
               </template>
-            </tbody>
-          </table>
+              <template v-else>
+                <div class="list-card-top clickable" @click="selectedListId = list.id">
+                  <div class="list-card-headline">
+                    <span class="list-card-name">{{ list.name }}</span>
+                    <span class="list-card-date">{{ new Date(list.createdAt).toLocaleDateString('de-AT') }}</span>
+                  </div>
+                  <span class="badge badge-primary">{{ list.items.length }} Artikel</span>
+                </div>
+
+                <div class="list-card-meta">
+                  <span class="meta-pill">
+                    Geschätzt
+                    <strong>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</strong>
+                  </span>
+                  <span class="meta-pill">
+                    Tatsächlich
+                    <strong>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</strong>
+                  </span>
+                </div>
+
+                <div class="complete-budget-box">
+                  <label class="checkbox-row">
+                    <input v-model="completeAsBudgetExpense[list.id]" type="checkbox" />
+                    <span>Als Budget-Ausgabe speichern</span>
+                  </label>
+
+                  <select
+                    v-if="completeAsBudgetExpense[list.id]"
+                    v-model="selectedExpenseCategoryId[list.id]"
+                    class="budget-category-select"
+                  >
+                    <option value="">Budget-Kategorie wählen</option>
+                    <option v-for="category in expenseCategories" :key="category.id" :value="category.id">
+                      {{ category.name }}
+                    </option>
+                  </select>
+
+                  <p
+                    v-if="completeAsBudgetExpense[list.id] && budgetHintByListId[list.id]"
+                    class="budget-hint"
+                    :class="{ 'budget-hint-over': budgetHintByListId[list.id]!.over }"
+                  >
+                    {{ budgetHintByListId[list.id]!.text }}
+                  </p>
+                </div>
+
+                <div class="actions list-card-actions">
+                  <button class="btn-add" @click="selectedListId = list.id">Öffnen</button>
+                  <button
+                    class="btn-secondary"
+                    @click="startReceiptScan(list.id)"
+                    :disabled="receiptScanning"
+                  >
+                    {{ receiptScanning && receiptListId === list.id ? '⏳ Scanne…' : '📷 Bon scannen' }}
+                  </button>
+                  <button class="btn-secondary" @click="startEditList(list)">Bearbeiten</button>
+                  <button class="btn-secondary" @click="completeShoppingList(list.id)">Abschließen</button>
+                  <button class="btn-danger" @click="deleteList(list.id)">Löschen</button>
+                </div>
+              </template>
+            </div>
+          </div>
 
           <div v-else class="empty-state">Noch keine Einkaufslisten vorhanden.</div>
         </div>
@@ -2390,7 +2390,8 @@ onUnmounted(() => {
                 <h3 class="card-title" style="font-size:16px;">Preisoptionen</h3>
               </div>
 
-              <table v-if="item.priceOptions.length > 0" class="paper-table">
+              <div v-if="item.priceOptions.length > 0" class="table-scroll">
+              <table class="paper-table">
                 <thead>
                   <tr>
                     <th>Händler</th>
@@ -2434,6 +2435,7 @@ onUnmounted(() => {
                   </tr>
                 </tbody>
               </table>
+              </div>
 
               <div v-else class="empty-state">Noch keine Preisoptionen vorhanden.</div>
 
@@ -2493,6 +2495,7 @@ onUnmounted(() => {
             </span>
           </div>
 
+          <div class="table-scroll">
           <table class="receipt-table">
             <thead>
               <tr>
@@ -2522,6 +2525,7 @@ onUnmounted(() => {
               </tr>
             </tbody>
           </table>
+          </div>
           <p class="receipt-sum">Summe der Positionen: {{ formatMoney(receiptLinesTotal) }}</p>
 
           <div class="receipt-modal-footer">
@@ -2998,15 +3002,83 @@ textarea {
 .clickable { cursor: pointer; }
 .clickable:hover { color: var(--primary); }
 
-@media (max-width: 720px) {
-  .data-table,
-  .nested-table,
-  .paper-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
+/* Listenübersicht als Karten statt 7-Spalten-Tabelle: passt in die schmale
+   Spalte und bleibt am Handy bedienbar. */
+.list-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
+
+.list-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.list-card.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.list-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.list-card-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.list-card-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.list-card-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.list-card-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.meta-pill strong { color: var(--text); }
+
+.list-card-actions button { flex: 1 1 auto; }
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll > table { min-width: 640px; }
 
 .grocery-sheet {
   position: relative;
@@ -3344,4 +3416,14 @@ textarea {
 .receipt-sum { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; text-align: right; }
 .receipt-modal-footer { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
 .receipt-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* Kompaktere Abstände und volle Button-Breiten am Handy */
+@media (max-width: 560px) {
+  .dashboard-page { padding: 16px 12px; gap: 16px; }
+  .panel-card, .form-card, .data-card, .sheet-card { padding: 16px; }
+  .grocery-row { margin-left: 16px; padding: 12px 12px 10px; }
+  .grocery-row::before { left: -14px; }
+  .grocery-sheet::before { inset: 0 auto 0 20px; }
+  .actions button { flex: 1 1 auto; }
+}
 </style>
