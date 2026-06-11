@@ -20,6 +20,7 @@ public class HomeSuiteDbContext : DbContext
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<CatalogItem> CatalogItems => Set<CatalogItem>();
     public DbSet<CatalogItemPrice> CatalogItemPrices => Set<CatalogItemPrice>();
+    public DbSet<CatalogItemPriceSnapshot> CatalogItemPriceSnapshots => Set<CatalogItemPriceSnapshot>();
     public DbSet<ShoppingItemPriceOption> ShoppingItemPriceOptions => Set<ShoppingItemPriceOption>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
     public DbSet<CalendarSubscription> CalendarSubscriptions => Set<CalendarSubscription>();
@@ -49,6 +50,7 @@ public class HomeSuiteDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Type).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.MonthlyLimit).HasColumnType("numeric(12,2)");
         });
 
         modelBuilder.Entity<Transaction>(entity =>
@@ -173,6 +175,21 @@ public class HomeSuiteDbContext : DbContext
             entity.Property(x => x.IsAvailable).IsRequired();
             entity.Property(x => x.CheckedAt).IsRequired();
             entity.Property(x => x.SourceType).HasMaxLength(50).IsRequired();
+        });
+
+        modelBuilder.Entity<CatalogItemPriceSnapshot>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.StoreName).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.BestTotalPrice).HasColumnType("numeric(12,2)");
+            entity.Property(x => x.BestUnitPrice).HasColumnType("numeric(12,2)");
+            entity.Property(x => x.RecordedAt).IsRequired();
+            entity.HasIndex(x => new { x.CatalogItemId, x.RecordedAt });
+
+            entity.HasOne(x => x.CatalogItem)
+                .WithMany()
+                .HasForeignKey(x => x.CatalogItemId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ShoppingItemPriceOption>(entity =>

@@ -95,7 +95,8 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
             return [];
         }
 
-        var queryTokens = BuildTokens(request.Query, request.BrandHint);
+        var queryTokens = BuildTokens(request.Query, null);
+        var brandTokens = BuildTokens(request.BrandHint ?? string.Empty, null);
         var results = new List<(int Score, CrawledCatalogPriceResult Result)>();
 
         foreach (var link in links)
@@ -135,7 +136,7 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
                 continue;
             }
 
-            var score = ScoreProduct(productName, cardText, queryTokens);
+            var score = ScoreProduct(productName, cardText, queryTokens, brandTokens);
             if (score <= 0)
             {
                 continue;
@@ -187,12 +188,15 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
         doc.LoadHtml(html);
 
         var pageText = NormalizeWhitespace(doc.DocumentNode.InnerText);
+        var jsonLdProduct = JsonLdProductParser.ExtractProduct(doc);
+
         var productName = FirstNonEmpty(
+            jsonLdProduct?.Name,
             doc.DocumentNode.SelectSingleNode("//h1")?.InnerText,
             doc.DocumentNode.SelectSingleNode("//title")?.InnerText,
             request.Query);
 
-        var totalPrice = ExtractDisplayPrice(pageText);
+        var totalPrice = jsonLdProduct?.Price ?? ExtractDisplayPrice(pageText);
         var unitPrice = ExtractUnitPrice(pageText);
 
         if (totalPrice is null)
@@ -306,18 +310,20 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
         return null;
     }
 
-    private static int ScoreProduct(string productName, string cardText, IReadOnlyList<string> tokens)
+    private static int ScoreProduct(string productName, string cardText, IReadOnlyList<string> tokens, IReadOnlyList<string> brandTokens)
     {
         var haystackName = productName.ToLowerInvariant();
         var haystackCard = cardText.ToLowerInvariant();
 
         var score = 0;
+        var nameHits = 0;
 
         foreach (var token in tokens)
         {
             if (haystackName.Contains(token))
             {
                 score += 3;
+                nameHits++;
             }
             else if (haystackCard.Contains(token))
             {
@@ -325,9 +331,18 @@ public class BillaPriceCrawlerSource : IPriceCrawlerSource
             }
         }
 
-        if (score == 0)
+        // Ohne Treffer im Produktnamen ist das Produkt mit hoher Wahrscheinlichkeit irrelevant.
+        if (nameHits == 0)
         {
             return 0;
+        }
+
+        foreach (var token in brandTokens)
+        {
+            if (haystackName.Contains(token))
+            {
+                score += 5;
+            }
         }
 
         if (LooksLikeRelevantPackage(cardText))

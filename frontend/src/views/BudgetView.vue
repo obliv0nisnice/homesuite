@@ -8,6 +8,7 @@ type Category = {
   id: string
   name: string
   type: string
+  monthlyLimit?: number | null
 }
 
 type Transaction = {
@@ -59,8 +60,15 @@ const stoppingRecurringId = ref<string | null>(null)
 const deletingCategoryId = ref<string | null>(null)
 const savingEdit = ref(false)
 
-const budgetLimits = ref<Record<string, number>>({})
-const editingLimits = ref<Record<string, number>>({})
+const editingLimits = ref<Record<string, number | null>>({})
+const savingLimits = ref(false)
+
+const selectedMonth = ref(startOfMonth(new Date()))
+
+const txSearch = ref('')
+const txTypeFilter = ref<'all' | 'Income' | 'Expense'>('all')
+const txPage = ref(1)
+const TX_PAGE_SIZE = 20
 
 const editTransaction = ref<{
   id: string
@@ -92,14 +100,18 @@ const barRef = ref<HTMLCanvasElement | null>(null)
 
 // ─── Computed ─────────────────────────────────────────────────────────────────
 
+const monthTransactions = computed(() =>
+  transactions.value.filter((tx) => isInSelectedMonth(tx.date)),
+)
+
 const expenseCategories = computed<CategorySummary[]>(() =>
   categories.value
     .filter((c) => c.type === 'Expense')
     .map((category, index) => {
-      const spent = transactions.value
+      const spent = monthTransactions.value
         .filter((tx) => tx.categoryId === category.id && tx.categoryType === 'Expense')
         .reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
-      const customLimit = budgetLimits.value[category.id]
+      const customLimit = category.monthlyLimit ?? undefined
       const derivedLimit = customLimit ?? (spent > 0 ? Math.ceil((spent * 1.15) / 10) * 10 : 100)
       return {
         id: category.id,
@@ -116,7 +128,7 @@ const incomeCategories = computed<CategorySummary[]>(() =>
   categories.value
     .filter((c) => c.type === 'Income')
     .map((category, index) => {
-      const earned = transactions.value
+      const earned = monthTransactions.value
         .filter((tx) => tx.categoryId === category.id && tx.categoryType === 'Income')
         .reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
       return {
@@ -130,24 +142,40 @@ const incomeCategories = computed<CategorySummary[]>(() =>
     }),
 )
 
-const recentTransactions = computed(() =>
-  [...transactions.value]
+const filteredTransactions = computed(() => {
+  const search = txSearch.value.trim().toLowerCase()
+
+  return [...monthTransactions.value]
+    .filter((tx) => txTypeFilter.value === 'all' || tx.categoryType === txTypeFilter.value)
+    .filter((tx) =>
+      !search ||
+      tx.title.toLowerCase().includes(search) ||
+      (tx.note ?? '').toLowerCase().includes(search) ||
+      tx.categoryName.toLowerCase().includes(search))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 10),
+})
+
+const txTotalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredTransactions.value.length / TX_PAGE_SIZE)),
 )
+
+const pagedTransactions = computed(() => {
+  const page = Math.min(txPage.value, txTotalPages.value)
+  return filteredTransactions.value.slice((page - 1) * TX_PAGE_SIZE, page * TX_PAGE_SIZE)
+})
 
 const recurringTransactions = computed(() =>
   transactions.value.filter((t) => t.isRecurring),
 )
 
 const totalIncome = computed(() =>
-  transactions.value
+  monthTransactions.value
     .filter((t) => t.categoryType === 'Income')
     .reduce((sum, t) => sum + Math.abs(t.amount), 0),
 )
 
 const totalExpenses = computed(() =>
-  transactions.value
+  monthTransactions.value
     .filter((t) => t.categoryType === 'Expense')
     .reduce((sum, t) => sum + Math.abs(t.amount), 0),
 )
@@ -168,8 +196,12 @@ const overBudgetCount = computed(() =>
   expenseCategories.value.filter((c) => c.amount > c.limit).length,
 )
 
-const currentMonth = computed(() =>
-  new Date().toLocaleString('de-AT', { month: 'long', year: 'numeric' }),
+const selectedMonthLabel = computed(() =>
+  selectedMonth.value.toLocaleString('de-AT', { month: 'long', year: 'numeric' }),
+)
+
+const isCurrentMonth = computed(() =>
+  selectedMonth.value.getTime() === startOfMonth(new Date()).getTime(),
 )
 
 const filteredCategoriesForModal = computed(() =>
@@ -183,6 +215,27 @@ const filteredCategoriesForEdit = computed(() =>
 )
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+
+function isInSelectedMonth(date: string) {
+  const d = new Date(date)
+  return d.getFullYear() === selectedMonth.value.getFullYear()
+    && d.getMonth() === selectedMonth.value.getMonth()
+}
+
+function goPrevMonth() {
+  selectedMonth.value = new Date(selectedMonth.value.getFullYear(), selectedMonth.value.getMonth() - 1, 1)
+  txPage.value = 1
+}
+
+function goNextMonth() {
+  if (isCurrentMonth.value) return
+  selectedMonth.value = new Date(selectedMonth.value.getFullYear(), selectedMonth.value.getMonth() + 1, 1)
+  txPage.value = 1
+}
 
 function formatNum(n: number) {
   return n.toLocaleString('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -236,8 +289,7 @@ async function loadData() {
         loadedCategories.find((c) => c.type === newTransaction.value.type)?.id ??
         loadedCategories[0]?.id ?? ''
     }
-    const stored = localStorage.getItem('budgetLimits')
-    if (stored) budgetLimits.value = JSON.parse(stored)
+    await migrateLocalBudgetLimits()
     await nextTick()
     renderCharts()
   } catch (err) {
@@ -395,25 +447,68 @@ async function deleteCategory(id: string, name: string) {
 
 function openBudgetLimitModal() {
   editingLimits.value = {}
-  expenseCategories.value.forEach((cat) => {
-    editingLimits.value[cat.id] = budgetLimits.value[cat.id] ?? cat.limit
-  })
+  categories.value
+    .filter((c) => c.type === 'Expense')
+    .forEach((cat) => {
+      editingLimits.value[cat.id] = cat.monthlyLimit ?? null
+    })
   showBudgetLimitModal.value = true
 }
 
-function saveBudgetLimits() {
-  budgetLimits.value = { ...editingLimits.value }
-  localStorage.setItem('budgetLimits', JSON.stringify(budgetLimits.value))
-  showBudgetLimitModal.value = false
-  success.value = 'Budget-Limits gespeichert.'
-  nextTick(() => renderCharts())
+async function saveBudgetLimits() {
+  savingLimits.value = true
+  error.value = ''
+  try {
+    for (const cat of categories.value.filter((c) => c.type === 'Expense')) {
+      const rawLimit = editingLimits.value[cat.id]
+      const newLimit = typeof rawLimit === 'number' && rawLimit > 0 ? rawLimit : null
+      if ((cat.monthlyLimit ?? null) === newLimit) continue
+      await apiFetch(`/categories/${cat.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: cat.name, type: cat.type, monthlyLimit: newLimit }),
+      })
+      cat.monthlyLimit = newLimit
+    }
+    showBudgetLimitModal.value = false
+    success.value = 'Budget-Limits gespeichert.'
+    await nextTick()
+    renderCharts()
+  } catch {
+    error.value = 'Budget-Limits konnten nicht gespeichert werden.'
+  } finally {
+    savingLimits.value = false
+  }
 }
 
 function resetBudgetLimits() {
   editingLimits.value = {}
-  expenseCategories.value.forEach((cat) => {
-    editingLimits.value[cat.id] = cat.amount > 0 ? Math.ceil((cat.amount * 1.15) / 10) * 10 : 100
-  })
+  categories.value
+    .filter((c) => c.type === 'Expense')
+    .forEach((cat) => {
+      editingLimits.value[cat.id] = null
+    })
+}
+
+// Einmalige Übernahme der früher im localStorage gespeicherten Limits ins Backend.
+async function migrateLocalBudgetLimits() {
+  const stored = localStorage.getItem('budgetLimits')
+  if (!stored) return
+  try {
+    const parsed = JSON.parse(stored) as Record<string, number>
+    for (const cat of categories.value) {
+      const limit = parsed[cat.id]
+      if (cat.type === 'Expense' && typeof limit === 'number' && limit > 0 && cat.monthlyLimit == null) {
+        await apiFetch(`/categories/${cat.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: cat.name, type: cat.type, monthlyLimit: limit }),
+        })
+        cat.monthlyLimit = limit
+      }
+    }
+    localStorage.removeItem('budgetLimits')
+  } catch {
+    // localStorage-Inhalt unbrauchbar — Limits bleiben einfach ungesetzt.
+  }
 }
 
 // ─── Charts ───────────────────────────────────────────────────────────────────
@@ -534,7 +629,7 @@ function renderBar() {
   ctx.clearRect(0, 0, W, H)
 
   const monthKeys = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date()
+    const d = new Date(selectedMonth.value)
     d.setMonth(d.getMonth() - (5 - i))
     return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString('de-AT', { month: 'short' }) }
   })
@@ -607,6 +702,10 @@ watch(() => editTransaction.value?.type, (type) => {
 })
 
 watch([transactions, categories], async () => { await nextTick(); renderCharts() }, { deep: true })
+
+watch(selectedMonth, async () => { await nextTick(); renderCharts() })
+
+watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
 </script>
 
 <template>
@@ -616,7 +715,11 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
     <div class="page-header">
       <div>
         <h1 class="page-title">Budget <span class="title-accent">Übersicht</span></h1>
-        <p class="page-subtitle">{{ currentMonth }} · Finanzen auf einen Blick</p>
+        <div class="month-nav">
+          <button class="btn-month" @click="goPrevMonth" title="Voriger Monat">‹</button>
+          <span class="month-label">{{ selectedMonthLabel }}</span>
+          <button class="btn-month" @click="goNextMonth" :disabled="isCurrentMonth" title="Nächster Monat">›</button>
+        </div>
       </div>
       <div class="page-actions">
         <button class="btn-secondary" @click="loadData" :disabled="loading">↺ Neu laden</button>
@@ -638,7 +741,7 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
         <div class="stat-info">
           <span class="stat-label">Einnahmen</span>
           <span class="stat-value">€ {{ formatNum(totalIncome) }}</span>
-          <span class="stat-trend trend-up">↑ diesen Monat</span>
+          <span class="stat-trend trend-up">{{ selectedMonthLabel }}</span>
         </div>
         <div class="stat-bg-shape"></div>
       </div>
@@ -678,7 +781,7 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
       <div class="chart-card chart-donut-card">
         <div class="chart-header">
           <span class="chart-title">Verteilung</span>
-          <span class="chart-badge">{{ currentMonth }}</span>
+          <span class="chart-badge">{{ selectedMonthLabel }}</span>
         </div>
         <div class="donut-wrapper">
           <canvas ref="donutRef" width="220" height="220"></canvas>
@@ -754,7 +857,7 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
     <!-- ── Transactions Table ── -->
     <div class="transactions-card">
       <div class="chart-header">
-        <span class="chart-title">Letzte Transaktionen</span>
+        <span class="chart-title">Transaktionen · {{ selectedMonthLabel }}</span>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <button
             v-if="recurringTransactions.length > 0"
@@ -763,8 +866,21 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
           >
             🔁 Wiederkehrend verwalten
           </button>
-          <span class="chart-badge">{{ recentTransactions.length }} Einträge</span>
+          <span class="chart-badge">{{ filteredTransactions.length }} Einträge</span>
         </div>
+      </div>
+      <div class="tx-filter-bar">
+        <input
+          v-model="txSearch"
+          class="form-input tx-search"
+          type="search"
+          placeholder="🔍 Suchen (Titel, Notiz, Kategorie) …"
+        />
+        <select v-model="txTypeFilter" class="form-input tx-type-filter">
+          <option value="all">Alle Typen</option>
+          <option value="Income">Einnahmen</option>
+          <option value="Expense">Ausgaben</option>
+        </select>
       </div>
       <div class="trans-table">
         <div class="trans-row header-row">
@@ -774,7 +890,7 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
           <span class="text-right">Betrag</span>
           <span></span>
         </div>
-        <div v-for="tx in recentTransactions" :key="tx.id" class="trans-row">
+        <div v-for="tx in pagedTransactions" :key="tx.id" class="trans-row">
           <span class="trans-date">{{ formatDate(tx.date) }}</span>
           <span class="trans-desc">
             <span>{{ tx.title }}</span>
@@ -808,7 +924,12 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
             </button>
           </span>
         </div>
-        <div v-if="recentTransactions.length === 0" class="empty-state">Noch keine Transaktionen vorhanden.</div>
+        <div v-if="filteredTransactions.length === 0" class="empty-state">Keine Transaktionen für diesen Monat/Filter.</div>
+      </div>
+      <div v-if="txTotalPages > 1" class="tx-pagination">
+        <button class="btn-page" :disabled="txPage <= 1" @click="txPage--">‹ Zurück</button>
+        <span class="tx-page-label">Seite {{ Math.min(txPage, txTotalPages) }} / {{ txTotalPages }}</span>
+        <button class="btn-page" :disabled="txPage >= txTotalPages" @click="txPage++">Weiter ›</button>
       </div>
     </div>
 
@@ -1026,12 +1147,12 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
             <button class="modal-close" @click="showBudgetLimitModal = false">✕</button>
           </div>
           <div class="modal-body">
-            <p class="modal-hint">Monatliches Limit pro Ausgaben-Kategorie.</p>
+            <p class="modal-hint">Monatliches Limit pro Ausgaben-Kategorie. Leer lassen = automatisches Limit. Gilt für alle Geräte.</p>
             <div v-for="cat in expenseCategories" :key="'bl-' + cat.id" class="form-group">
               <label>{{ cat.icon }} {{ cat.name }}</label>
               <div class="limit-input-row">
                 <span class="limit-euro">€</span>
-                <input v-model.number="editingLimits[cat.id]" class="form-input" type="number" min="0" step="10" />
+                <input v-model.number="editingLimits[cat.id]" class="form-input" type="number" min="0" step="10" placeholder="automatisch" />
               </div>
             </div>
             <div v-if="expenseCategories.length === 0" class="empty-state">Keine Ausgaben-Kategorien.</div>
@@ -1039,7 +1160,7 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
           <div class="modal-footer">
             <button class="btn-cancel" @click="resetBudgetLimits" style="margin-right: auto">↺ Zurücksetzen</button>
             <button class="btn-cancel" @click="showBudgetLimitModal = false">Abbrechen</button>
-            <button class="btn-save" @click="saveBudgetLimits">Speichern</button>
+            <button class="btn-save" @click="saveBudgetLimits" :disabled="savingLimits">{{ savingLimits ? 'Speichert…' : 'Speichern' }}</button>
           </div>
         </div>
       </div>
@@ -1058,6 +1179,23 @@ watch([transactions, categories], async () => { await nextTick(); renderCharts()
 .title-accent { color: var(--primary); }
 .page-subtitle { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
 .badge-count { display: inline-flex; align-items: center; justify-content: center; background: var(--primary); color: white; border-radius: 99px; font-size: 11px; font-weight: 700; padding: 1px 6px; margin-left: 4px; }
+
+/* Month nav */
+.month-nav { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.month-label { color: var(--text); font-size: 14px; font-weight: 600; min-width: 130px; text-align: center; }
+.btn-month { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-size: 16px; padding: 2px 10px; cursor: pointer; transition: background 0.15s; }
+.btn-month:hover:not(:disabled) { background: var(--surface2); }
+.btn-month:disabled { opacity: 0.4; cursor: default; }
+
+/* Transaction filter + pagination */
+.tx-filter-bar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.tx-search { flex: 1; min-width: 180px; }
+.tx-type-filter { width: auto; }
+.tx-pagination { display: flex; align-items: center; justify-content: center; gap: 14px; padding-top: 14px; }
+.tx-page-label { font-size: 12px; color: var(--text-muted); }
+.btn-page { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 12px; cursor: pointer; transition: background 0.15s; }
+.btn-page:hover:not(:disabled) { background: var(--border); }
+.btn-page:disabled { opacity: 0.4; cursor: default; }
 
 /* Alerts */
 .alert { padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; }

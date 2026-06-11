@@ -35,6 +35,8 @@ public interface IPlaywrightStoreSearchService
 
 public sealed class PlaywrightStoreSearchService : IPlaywrightStoreSearchService
 {
+    private static readonly TimeSpan ProcessTimeout = TimeSpan.FromSeconds(60);
+
     private readonly CatalogCrawlerOptions _options;
     private readonly ILogger<PlaywrightStoreSearchService> _logger;
 
@@ -98,9 +100,32 @@ public sealed class PlaywrightStoreSearchService : IPlaywrightStoreSearchService
         using var process = new Process { StartInfo = startInfo };
         process.Start();
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        // Ohne Timeout blockiert ein hängendes Chromium den kompletten Preis-Refresh.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(ProcessTimeout);
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        var stderrTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKillProcess(process);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+
+            _logger.LogWarning(
+                "Playwright-Suche nach {Timeout} abgebrochen für {Url}.",
+                ProcessTimeout,
+                request.SearchUrl);
+            return null;
+        }
 
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
@@ -138,15 +163,28 @@ public sealed class PlaywrightStoreSearchService : IPlaywrightStoreSearchService
         }
     }
 
+    private void TryKillProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Playwright-Prozess konnte nicht beendet werden.");
+        }
+    }
+
     private string? ResolveSourceRoot()
     {
         var candidates = new[]
         {
             _options.SourceRoot,
             Environment.GetEnvironmentVariable("HOMESUITE_SOURCE_ROOT"),
-            Directory.GetCurrentDirectory(),
-            "/home/jakob/homesuite",
-            "/home/oblivion/Documents/Projects/homesuite"
+            Directory.GetCurrentDirectory()
         };
 
         return candidates

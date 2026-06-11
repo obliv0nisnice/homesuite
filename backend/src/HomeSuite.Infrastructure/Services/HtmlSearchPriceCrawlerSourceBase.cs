@@ -78,7 +78,8 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
         CrawledCatalogPriceRequest request,
         CancellationToken cancellationToken)
     {
-        var queryTokens = BuildTokens(request.Query, request.BrandHint);
+        var queryTokens = BuildTokens(request.Query, null);
+        var brandTokens = BuildTokens(request.BrandHint ?? string.Empty, null);
         var results = new List<(int Score, CrawledCatalogPriceResult Result)>();
 
         foreach (var productUrl in productUrls)
@@ -89,7 +90,7 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
                 continue;
             }
 
-            var score = ScoreProduct(result.ProductName, request.Query, queryTokens);
+            var score = ScoreProduct(result.ProductName, queryTokens, brandTokens);
             if (score > 0)
             {
                 results.Add((score, result));
@@ -217,12 +218,15 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
             return null;
         }
 
+        var jsonLdProduct = JsonLdProductParser.ExtractProduct(doc);
+
         var productName = FirstNonEmpty(
+            jsonLdProduct?.Name,
             doc.DocumentNode.SelectSingleNode("//h1")?.InnerText,
             doc.DocumentNode.SelectSingleNode("//title")?.InnerText,
             request.Query);
 
-        var totalPrice = ExtractDisplayPrice(pageText);
+        var totalPrice = jsonLdProduct?.Price ?? ExtractDisplayPrice(pageText);
         var unitPrice = ExtractUnitPrice(pageText);
 
         if (totalPrice is null)
@@ -328,21 +332,30 @@ public abstract class HtmlSearchPriceCrawlerSourceBase : IPriceCrawlerSource
             .ToList();
     }
 
-    protected static int ScoreProduct(string productName, string pageText, IReadOnlyList<string> tokens)
+    protected static int ScoreProduct(string productName, IReadOnlyList<string> queryTokens, IReadOnlyList<string> brandTokens)
     {
         var haystackName = productName.ToLowerInvariant();
-        var haystackPage = pageText.ToLowerInvariant();
         var score = 0;
 
-        foreach (var token in tokens)
+        foreach (var token in queryTokens)
         {
             if (haystackName.Contains(token))
             {
                 score += 3;
             }
-            else if (haystackPage.Contains(token))
+        }
+
+        // Ohne Treffer im Produktnamen ist das Produkt mit hoher Wahrscheinlichkeit irrelevant.
+        if (score == 0)
+        {
+            return 0;
+        }
+
+        foreach (var token in brandTokens)
+        {
+            if (haystackName.Contains(token))
             {
-                score += 1;
+                score += 5;
             }
         }
 

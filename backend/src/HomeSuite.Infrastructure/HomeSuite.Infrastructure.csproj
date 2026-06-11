@@ -18,6 +18,7 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
         <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
+        <PackageReference Include="Anthropic" Version="12.29.0" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -13,4 +13,7 @@ public class CatalogItemDto
     public List<CatalogItemPriceDto> Prices { get; set; } = [];
     public decimal? BestUnitPrice { get; set; }
     public decimal? BestTotalPrice { get; set; }
+
+    public decimal? AverageBestTotalPrice30d { get; set; }
+    public decimal? PriceTrendPercent { get; set; }
 }

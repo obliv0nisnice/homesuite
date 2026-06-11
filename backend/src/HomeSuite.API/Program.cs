@@ -9,11 +9,18 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<HomeSuiteDbContext>();
 builder.Services.AddSingleton(new CatalogCrawlerOptions
 {
-    SourceRoot = builder.Configuration["CatalogCrawler:SourceRoot"]
+    SourceRoot = builder.Configuration["CatalogCrawler:SourceRoot"],
+    NixExecutablePath = builder.Configuration["CatalogCrawler:NixExecutablePath"] ?? "nix"
 });
 builder.Services.AddSingleton<IPlaywrightStoreSearchService, PlaywrightStoreSearchService>();
+builder.Services.AddSingleton(new ReceiptScanOptions
+{
+    Model = builder.Configuration["ReceiptScan:Model"] ?? "claude-opus-4-8"
+});
 
 builder.Services.AddDbContext<HomeSuiteDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -28,6 +35,7 @@ builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<ICatalogPriceCrawlerService, CatalogPriceCrawlerService>();
 builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
+builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddHostedService<RecurringTransactionWorker>();
 builder.Services.AddHttpClient("CalendarSubscriptions", client =>
 {
@@ -109,4 +117,5 @@ if (app.Environment.IsDevelopment())
 app.UseCors("Frontend");
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
 app.Run();

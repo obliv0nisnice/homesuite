@@ -63,24 +63,29 @@ public class RecurringTransactionWorker : BackgroundService
 
         foreach (var template in due)
         {
-            var newTx = new Transaction
+            // Alle verpassten Intervalle nachholen (z. B. nach Server-Downtime),
+            // nicht nur eines pro Worker-Lauf.
+            while (template.NextDueDate!.Value.Date <= today)
             {
-                Id                = Guid.NewGuid(),
-                Title             = template.Title,
-                Amount            = template.Amount,
-                Date              = today,
-                Note              = template.Note,
-                CategoryId        = template.CategoryId,
-                IsRecurring       = false,
-                RecurringInterval = null,
-                NextDueDate       = null,
-            };
+                var newTx = new Transaction
+                {
+                    Id                = Guid.NewGuid(),
+                    Title             = template.Title,
+                    Amount            = template.Amount,
+                    Date              = DateTime.SpecifyKind(template.NextDueDate.Value.Date, DateTimeKind.Utc),
+                    Note              = template.Note,
+                    CategoryId        = template.CategoryId,
+                    IsRecurring       = false,
+                    RecurringInterval = null,
+                    NextDueDate       = null,
+                };
 
-            db.Transactions.Add(newTx);
+                db.Transactions.Add(newTx);
 
-            template.NextDueDate = CalculateNextDueDate(
-                template.NextDueDate!.Value,
-                template.RecurringInterval);
+                template.NextDueDate = CalculateNextDueDate(
+                    template.NextDueDate.Value,
+                    template.RecurringInterval);
+            }
         }
 
         await db.SaveChangesAsync(ct);

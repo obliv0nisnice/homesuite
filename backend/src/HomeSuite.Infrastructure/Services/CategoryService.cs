@@ -23,7 +23,8 @@ public class CategoryService : ICategoryService
             {
                 Id = x.Id,
                 Name = x.Name,
-                Type = x.Type
+                Type = x.Type,
+                MonthlyLimit = x.MonthlyLimit
             })
             .ToListAsync(cancellationToken);
     }
@@ -36,7 +37,8 @@ public class CategoryService : ICategoryService
             {
                 Id = x.Id,
                 Name = x.Name,
-                Type = x.Type
+                Type = x.Type,
+                MonthlyLimit = x.MonthlyLimit
             })
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -48,7 +50,8 @@ public class CategoryService : ICategoryService
         var category = new Category
         {
             Name = request.Name.Trim(),
-            Type = normalizedType
+            Type = normalizedType,
+            MonthlyLimit = NormalizeMonthlyLimit(request.MonthlyLimit, normalizedType)
         };
 
         _dbContext.Categories.Add(category);
@@ -58,7 +61,8 @@ public class CategoryService : ICategoryService
         {
             Id = category.Id,
             Name = category.Name,
-            Type = category.Type
+            Type = category.Type,
+            MonthlyLimit = category.MonthlyLimit
         };
     }
 
@@ -76,6 +80,7 @@ public class CategoryService : ICategoryService
 
         category.Name = request.Name.Trim();
         category.Type = normalizedType;
+        category.MonthlyLimit = NormalizeMonthlyLimit(request.MonthlyLimit, normalizedType);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -83,7 +88,8 @@ public class CategoryService : ICategoryService
         {
             Id = category.Id,
             Name = category.Name,
-            Type = category.Type
+            Type = category.Type,
+            MonthlyLimit = category.MonthlyLimit
         };
     }
 
@@ -109,6 +115,21 @@ public class CategoryService : ICategoryService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private static decimal? NormalizeMonthlyLimit(decimal? monthlyLimit, string type)
+    {
+        if (monthlyLimit is null || type != "Expense")
+        {
+            return null;
+        }
+
+        if (monthlyLimit < 0)
+        {
+            throw new ArgumentException("Das Monatslimit darf nicht negativ sein.");
+        }
+
+        return decimal.Round(monthlyLimit.Value, 2);
     }
 
     private static string ValidateAndNormalize(string name, string type)

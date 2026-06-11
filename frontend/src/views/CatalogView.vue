@@ -25,6 +25,8 @@ type CatalogItem = {
   prices: CatalogItemPrice[]
   bestUnitPrice?: number | null
   bestTotalPrice?: number | null
+  averageBestTotalPrice30d?: number | null
+  priceTrendPercent?: number | null
 }
 
 type CatalogItemPayload = {
@@ -398,7 +400,16 @@ onMounted(loadData)
                   <td>{{ item.category || '—' }}</td>
                   <td>{{ item.searchTerm || '—' }}</td>
                   <td>{{ item.brandHint || '—' }}</td>
-                  <td>{{ formatPrice(item.bestTotalPrice) }}</td>
+                  <td>
+                    {{ formatPrice(item.bestTotalPrice) }}
+                    <span
+                      v-if="item.priceTrendPercent != null && Math.abs(item.priceTrendPercent) >= 2"
+                      :class="['trend-badge', item.priceTrendPercent < 0 ? 'trend-cheap' : 'trend-expensive']"
+                      :title="`30-Tage-Schnitt: ${formatPrice(item.averageBestTotalPrice30d)}`"
+                    >
+                      {{ item.priceTrendPercent < 0 ? '▼' : '▲' }} {{ Math.abs(item.priceTrendPercent).toFixed(0) }}%
+                    </span>
+                  </td>
                   <td>{{ item.prices?.length ?? 0 }}</td>
                   <td class="actions">
                     <button class="btn-secondary" @click="toggleDetails(item.id)">
@@ -422,6 +433,10 @@ onMounted(loadData)
                       <div class="meta-tile">
                         <span class="meta-label">Bester Gesamtpreis</span>
                         <span class="meta-value">{{ formatPrice(item.bestTotalPrice) }}</span>
+                      </div>
+                      <div class="meta-tile" v-if="item.averageBestTotalPrice30d != null">
+                        <span class="meta-label">30-Tage-Schnitt</span>
+                        <span class="meta-value">{{ formatPrice(item.averageBestTotalPrice30d) }}</span>
                       </div>
                       <div class="meta-tile">
                         <span class="meta-label">Suchbegriff</span>
@@ -884,4 +899,7 @@ textarea {
     white-space: nowrap;
   }
 }
+.trend-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.trend-cheap { background: rgba(16,185,129,0.12); color: #10b981; }
+.trend-expensive { background: rgba(239,68,68,0.12); color: #ef4444; }
 </style>

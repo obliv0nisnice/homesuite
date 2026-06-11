@@ -21,20 +21,61 @@ public class CatalogService : ICatalogService
 
     public async Task<List<CatalogItemDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.CatalogItems
+        var items = await _dbContext.CatalogItems
             .Include(x => x.Prices)
             .OrderBy(x => x.Name)
             .Select(MapExpression())
             .ToListAsync(cancellationToken);
+
+        await ApplyPriceTrendsAsync(items, cancellationToken);
+
+        return items;
     }
 
     public async Task<CatalogItemDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.CatalogItems
+        var item = await _dbContext.CatalogItems
             .Include(x => x.Prices)
             .Where(x => x.Id == id)
             .Select(MapExpression())
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (item is not null)
+        {
+            await ApplyPriceTrendsAsync([item], cancellationToken);
+        }
+
+        return item;
+    }
+
+    private async Task ApplyPriceTrendsAsync(IReadOnlyList<CatalogItemDto> items, CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var itemIds = items.Select(x => x.Id).ToList();
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+
+        var averages = await _dbContext.CatalogItemPriceSnapshots
+            .Where(x => itemIds.Contains(x.CatalogItemId))
+            .Where(x => x.RecordedAt >= cutoff)
+            .Where(x => x.BestTotalPrice.HasValue)
+            .GroupBy(x => x.CatalogItemId)
+            .Select(g => new { CatalogItemId = g.Key, Average = g.Average(x => x.BestTotalPrice) })
+            .ToDictionaryAsync(x => x.CatalogItemId, x => x.Average, cancellationToken);
+
+        foreach (var item in items)
+        {
+            if (!averages.TryGetValue(item.Id, out var average) || average is null or <= 0 || !item.BestTotalPrice.HasValue)
+            {
+                continue;
+            }
+
+            item.AverageBestTotalPrice30d = decimal.Round(average.Value, 2);
+            item.PriceTrendPercent = decimal.Round((item.BestTotalPrice.Value - average.Value) / average.Value * 100, 1);
+        }
     }
 
     public async Task<CatalogItemDto> CreateAsync(CreateCatalogItemRequest request, CancellationToken cancellationToken = default)

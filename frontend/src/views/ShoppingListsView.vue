@@ -13,11 +13,21 @@ type Category = {
   id: string
   name: string
   type: string
+  monthlyLimit?: number | null
 }
 
 const categories = ref<Category[]>([])
 const completeAsBudgetExpense = ref<Record<string, boolean>>({})
 const selectedExpenseCategoryId = ref<Record<string, string>>({})
+
+type BudgetTransaction = {
+  amount: number
+  date: string
+  categoryId: string
+  categoryType: string
+}
+
+const budgetTransactions = ref<BudgetTransaction[]>([])
 
 type CatalogItem = {
   id: string
@@ -263,6 +273,63 @@ const bestCompleteStoreSummary = computed(() =>
 const expenseCategories = computed(() =>
   categories.value.filter((c) => c.type === 'Expense'),
 )
+
+const monthlySpentByCategory = computed(() => {
+  const now = new Date()
+  const map: Record<string, number> = {}
+
+  for (const tx of budgetTransactions.value) {
+    if (tx.categoryType !== 'Expense') continue
+    const d = new Date(tx.date)
+    if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) continue
+    map[tx.categoryId] = (map[tx.categoryId] ?? 0) + Math.abs(tx.amount)
+  }
+
+  return map
+})
+
+const budgetHintByListId = computed(() => {
+  const map: Record<string, { text: string; over: boolean }> = {}
+
+  for (const list of shoppingLists.value) {
+    const categoryId = selectedExpenseCategoryId.value[list.id]
+    if (!categoryId) continue
+
+    const category = categories.value.find((c) => c.id === categoryId)
+    if (!category) continue
+
+    const spent = monthlySpentByCategory.value[categoryId] ?? 0
+    const estimate = list.items.reduce(
+      (sum, item) => sum + (item.actualTotalPrice ?? item.estimatedTotalPrice ?? 0),
+      0,
+    )
+
+    if (category.monthlyLimit == null) {
+      map[list.id] = {
+        text: `${category.name}: diesen Monat bereits ${formatMoney(spent)} ausgegeben · diese Liste: ~${formatMoney(estimate)}`,
+        over: false,
+      }
+      continue
+    }
+
+    const remaining = category.monthlyLimit - spent
+    map[list.id] = {
+      text: `${category.name}: noch ${formatMoney(remaining)} von ${formatMoney(category.monthlyLimit)} übrig · diese Liste: ~${formatMoney(estimate)}`,
+      over: estimate > remaining,
+    }
+  }
+
+  return map
+})
+
+async function loadBudgetSpending() {
+  try {
+    budgetTransactions.value = await apiFetch<BudgetTransaction[]>('/transactions')
+  } catch {
+    // Offline oder Backend nicht erreichbar — der Budget-Hinweis wird dann einfach nicht angezeigt.
+    budgetTransactions.value = []
+  }
+}
 
 const selectedCatalogEstimate = computed(() => {
   if (!newItem.value.catalogItemId) {
@@ -1649,6 +1716,159 @@ async function completeShoppingList(id: string) {
   }
 }
 
+// ── Beleg-Scan (Foto → Claude → Preise/Inventar/Budget) ──
+
+type ReceiptLine = {
+  name: string
+  quantity: number
+  unitPrice: number | null
+  totalPrice: number
+  shoppingItemId: string | null
+  catalogItemId: string | null
+}
+
+type ReceiptScanResult = {
+  storeName: string | null
+  purchaseDate: string | null
+  totalAmount: number | null
+  lines: ReceiptLine[]
+}
+
+const receiptFileInput = ref<HTMLInputElement | null>(null)
+const receiptListId = ref('')
+const receiptScanning = ref(false)
+const receiptApplying = ref(false)
+const showReceiptModal = ref(false)
+const receiptResult = ref<ReceiptScanResult | null>(null)
+const receiptCompleteList = ref(true)
+
+const receiptShoppingItems = computed(() =>
+  shoppingLists.value.find((x) => x.id === receiptListId.value)?.items ?? [],
+)
+
+const receiptLinesTotal = computed(() =>
+  (receiptResult.value?.lines ?? []).reduce((sum, line) => sum + (line.totalPrice || 0), 0),
+)
+
+function startReceiptScan(listId: string) {
+  if (!isOnline.value) {
+    error.value = 'Der Beleg-Scan benötigt eine Internetverbindung.'
+    return
+  }
+
+  receiptListId.value = listId
+  receiptFileInput.value?.click()
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+async function onReceiptFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+
+  if (!file || !receiptListId.value) {
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+  receiptScanning.value = true
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file)
+    const imageBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+
+    const result = await apiFetch<ReceiptScanResult>('/receipts/scan', {
+      method: 'POST',
+      body: JSON.stringify({
+        imageBase64,
+        mediaType: file.type || 'image/jpeg',
+        shoppingListId: receiptListId.value,
+      }),
+    })
+
+    receiptResult.value = result
+    showReceiptModal.value = true
+
+    if (result.lines.length === 0) {
+      error.value = 'Auf dem Beleg wurden keine Artikel erkannt.'
+    }
+  } catch (err) {
+    console.error(err)
+    error.value = err instanceof Error ? err.message : 'Beleg-Scan fehlgeschlagen.'
+  } finally {
+    receiptScanning.value = false
+  }
+}
+
+function removeReceiptLine(index: number) {
+  receiptResult.value?.lines.splice(index, 1)
+}
+
+function closeReceiptModal() {
+  showReceiptModal.value = false
+  receiptResult.value = null
+}
+
+async function applyReceipt() {
+  if (!receiptResult.value || !receiptListId.value) {
+    return
+  }
+
+  const createBudgetExpense =
+    receiptCompleteList.value && (completeAsBudgetExpense.value[receiptListId.value] ?? false)
+  const expenseCategoryId = selectedExpenseCategoryId.value[receiptListId.value] ?? ''
+
+  if (createBudgetExpense && !expenseCategoryId) {
+    error.value = 'Bitte eine Budget-Kategorie auswählen.'
+    return
+  }
+
+  error.value = ''
+  success.value = ''
+  receiptApplying.value = true
+
+  try {
+    await apiFetch<void>('/receipts/apply', {
+      method: 'POST',
+      body: JSON.stringify({
+        shoppingListId: receiptListId.value,
+        storeName: receiptResult.value.storeName,
+        lines: receiptResult.value.lines,
+        completeList: receiptCompleteList.value,
+        complete: receiptCompleteList.value
+          ? {
+              createBudgetExpense,
+              expenseCategoryId: createBudgetExpense ? expenseCategoryId : null,
+              transactionTitle: `Einkauf · ${receiptResult.value.storeName ?? 'Beleg'}`,
+              transactionDate: receiptResult.value.purchaseDate ?? new Date().toISOString().slice(0, 10),
+            }
+          : null,
+      }),
+    })
+
+    closeReceiptModal()
+    success.value = receiptCompleteList.value
+      ? 'Beleg übernommen: Preise aktualisiert, Inventar und Budget gebucht.'
+      : 'Beleg übernommen: Preise wurden aktualisiert.'
+    await loadData()
+    await loadBudgetSpending()
+  } catch (err) {
+    console.error(err)
+    error.value = err instanceof Error ? err.message : 'Beleg konnte nicht übernommen werden.'
+  } finally {
+    receiptApplying.value = false
+  }
+}
+
 function startEditPriceOption(priceOption: ShoppingItemPriceOption) {
   editPriceOptionId.value = priceOption.id
   editPriceOption.value = {
@@ -1852,6 +2072,7 @@ onMounted(async () => {
   window.addEventListener('online', handleOnlineShoppingSync)
   window.addEventListener('offline', handleOfflineShoppingMode)
   await loadData()
+  await loadBudgetSpending()
   await syncPendingShoppingMutations()
 })
 
@@ -1996,10 +2217,25 @@ onUnmounted(() => {
                             {{ category.name }}
                           </option>
                         </select>
+
+                        <p
+                          v-if="completeAsBudgetExpense[list.id] && budgetHintByListId[list.id]"
+                          class="budget-hint"
+                          :class="{ 'budget-hint-over': budgetHintByListId[list.id]!.over }"
+                        >
+                          {{ budgetHintByListId[list.id]!.text }}
+                        </p>
                       </div>
                     </td>
                     <td class="actions">
                       <button class="btn-secondary" @click="selectedListId = list.id">Öffnen</button>
+                      <button
+                        class="btn-secondary"
+                        @click="startReceiptScan(list.id)"
+                        :disabled="receiptScanning"
+                      >
+                        {{ receiptScanning && receiptListId === list.id ? '⏳ Scanne…' : '📷 Bon scannen' }}
+                      </button>
                       <button class="btn-secondary" @click="startEditList(list)">Bearbeiten</button>
                       <button class="btn-danger" @click="deleteList(list.id)">Löschen</button>
                       <button class="btn-add" @click="completeShoppingList(list.id)">Abschließen</button>
@@ -2227,6 +2463,99 @@ onUnmounted(() => {
         <div class="empty-state">Wähle links eine Einkaufsliste aus, um den Einkaufszettel zu sehen.</div>
       </div>
     </div>
+
+    <input
+      ref="receiptFileInput"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      style="display: none"
+      @change="onReceiptFileSelected"
+    />
+
+    <Teleport to="body">
+      <div
+        v-if="showReceiptModal && receiptResult"
+        class="receipt-modal-backdrop"
+        @click.self="closeReceiptModal"
+      >
+        <div class="receipt-modal">
+          <div class="receipt-modal-header">
+            <h2>📷 Beleg prüfen</h2>
+            <button class="receipt-modal-close" @click="closeReceiptModal">✕</button>
+          </div>
+
+          <div class="receipt-modal-meta">
+            <span><strong>{{ receiptResult.storeName ?? 'Unbekanntes Geschäft' }}</strong></span>
+            <span v-if="receiptResult.purchaseDate">{{ receiptResult.purchaseDate }}</span>
+            <span v-if="receiptResult.totalAmount != null">
+              Bon-Summe: {{ formatMoney(receiptResult.totalAmount) }}
+            </span>
+          </div>
+
+          <table class="receipt-table">
+            <thead>
+              <tr>
+                <th>Artikel laut Bon</th>
+                <th>Menge</th>
+                <th>Preis (€)</th>
+                <th>Zuordnung Einkaufsliste</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(line, index) in receiptResult.lines" :key="index">
+                <td><input v-model="line.name" type="text" /></td>
+                <td><input v-model.number="line.quantity" type="number" min="0" step="0.01" class="receipt-num" /></td>
+                <td><input v-model.number="line.totalPrice" type="number" min="0" step="0.01" class="receipt-num" /></td>
+                <td>
+                  <select v-model="line.shoppingItemId">
+                    <option :value="null">— nicht zuordnen —</option>
+                    <option v-for="item in receiptShoppingItems" :key="item.id" :value="item.id">
+                      {{ item.name }}
+                    </option>
+                  </select>
+                </td>
+                <td>
+                  <button class="btn-danger" @click="removeReceiptLine(index)" title="Position entfernen">✕</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="receipt-sum">Summe der Positionen: {{ formatMoney(receiptLinesTotal) }}</p>
+
+          <div class="receipt-modal-footer">
+            <label class="checkbox-row">
+              <input v-model="receiptCompleteList" type="checkbox" />
+              <span>Liste abschließen (gekaufte Artikel ins Inventar übernehmen)</span>
+            </label>
+
+            <label v-if="receiptCompleteList" class="checkbox-row">
+              <input v-model="completeAsBudgetExpense[receiptListId]" type="checkbox" />
+              <span>Als Budget-Ausgabe buchen</span>
+            </label>
+
+            <select
+              v-if="receiptCompleteList && completeAsBudgetExpense[receiptListId]"
+              v-model="selectedExpenseCategoryId[receiptListId]"
+              class="budget-category-select"
+            >
+              <option value="">Budget-Kategorie wählen</option>
+              <option v-for="category in expenseCategories" :key="category.id" :value="category.id">
+                {{ category.name }}
+              </option>
+            </select>
+
+            <div class="receipt-actions">
+              <button class="btn-secondary" @click="closeReceiptModal" :disabled="receiptApplying">Abbrechen</button>
+              <button class="btn-add" @click="applyReceipt" :disabled="receiptApplying">
+                {{ receiptApplying ? 'Übernehme…' : 'Übernehmen' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -2996,4 +3325,23 @@ textarea {
 .budget-category-select {
   min-width: 220px;
 }
+.budget-hint { margin: 6px 0 0; font-size: 12px; font-weight: 600; color: #10b981; }
+.budget-hint-over { color: #ef4444; }
+
+/* Beleg-Scan-Modal */
+.receipt-modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 16px; backdrop-filter: blur(4px); }
+.receipt-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 780px; max-height: 92vh; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.receipt-modal-header { display: flex; justify-content: space-between; align-items: center; }
+.receipt-modal-header h2 { font-size: 17px; font-weight: 700; color: var(--text); margin: 0; }
+.receipt-modal-close { background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text-muted); padding: 4px 8px; border-radius: 6px; }
+.receipt-modal-close:hover { background: var(--surface2); }
+.receipt-modal-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text); }
+.receipt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.receipt-table th { text-align: left; padding: 6px 4px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.receipt-table td { padding: 4px; border-top: 1px solid var(--border); }
+.receipt-table input, .receipt-table select { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font-size: 13px; box-sizing: border-box; }
+.receipt-num { max-width: 90px; }
+.receipt-sum { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; text-align: right; }
+.receipt-modal-footer { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
+.receipt-actions { display: flex; justify-content: flex-end; gap: 10px; }
 </style>

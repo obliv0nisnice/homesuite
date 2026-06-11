@@ -29,11 +29,25 @@ public class CatalogPriceCrawlerService : ICatalogPriceCrawlerService
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
 
+        var isFirstItem = true;
+
         foreach (var catalogItemId in catalogItemIds)
         {
+            // Jitter zwischen den Artikeln, damit die Shops nicht im Sekundentakt angefragt werden.
+            if (!isFirstItem)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(2000, 5001)), cancellationToken);
+            }
+
+            isFirstItem = false;
+
             try
             {
                 await RefreshCatalogItemPricesAsync(catalogItemId, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -130,5 +144,52 @@ public class CatalogPriceCrawlerService : ICatalogPriceCrawlerService
 
     await _dbContext.CatalogItemPrices.AddRangeAsync(newPrices, cancellationToken);
     await _dbContext.SaveChangesAsync(cancellationToken);
+
+    await RecordPriceSnapshotAsync(catalogItemId, cancellationToken);
 }
+
+    public async Task RecordPriceSnapshotAsync(Guid catalogItemId, CancellationToken cancellationToken = default)
+    {
+        var bestPrice = await _dbContext.CatalogItemPrices
+            .Where(x => x.CatalogItemId == catalogItemId)
+            .Where(x => x.IsAvailable)
+            .Where(x => x.TotalPrice.HasValue)
+            .OrderBy(x => x.TotalPrice)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (bestPrice is null)
+        {
+            return;
+        }
+
+        var bestUnitPrice = await _dbContext.CatalogItemPrices
+            .Where(x => x.CatalogItemId == catalogItemId)
+            .Where(x => x.IsAvailable)
+            .Where(x => x.UnitPrice.HasValue)
+            .MinAsync(x => x.UnitPrice, cancellationToken);
+
+        // Pro Tag nur ein Snapshot pro Artikel, damit manuelle Refreshes den 30-Tage-Schnitt nicht verzerren.
+        var today = DateTime.UtcNow.Date;
+        var existingSnapshot = await _dbContext.CatalogItemPriceSnapshots
+            .Where(x => x.CatalogItemId == catalogItemId)
+            .Where(x => x.RecordedAt >= today)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existingSnapshot is null)
+        {
+            existingSnapshot = new CatalogItemPriceSnapshot
+            {
+                Id = Guid.NewGuid(),
+                CatalogItemId = catalogItemId
+            };
+            _dbContext.CatalogItemPriceSnapshots.Add(existingSnapshot);
+        }
+
+        existingSnapshot.StoreName = bestPrice.StoreName;
+        existingSnapshot.BestTotalPrice = bestPrice.TotalPrice;
+        existingSnapshot.BestUnitPrice = bestUnitPrice;
+        existingSnapshot.RecordedAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
 }
