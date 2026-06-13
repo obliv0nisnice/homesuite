@@ -224,6 +224,12 @@ const newItem = ref({
   catalogItemId: '' as string | '',
 })
 
+// Notizblock-Eingabe: eine Zeile = ein Artikel (Tastatur oder Apple-Pencil/iPadOS-Scribble).
+const newLineText = ref('')
+// Zeile → Katalog wird aktuell lokal/clientseitig zugeordnet; Umstellung vorgesehen.
+const matchingMode = ref<'client' | 'llm'>('client')
+const MATCH_THRESHOLD = 60
+
 const editItemId = ref<string | null>(null)
 const editItem = ref({
   purchasedQuantity: 0,
@@ -286,6 +292,13 @@ const bestCompleteStoreSummary = computed(() =>
 const expenseCategories = computed(() =>
   categories.value.filter((c) => c.type === 'Expense'),
 )
+
+// Default-Budgetkategorie: „Essen“ bevorzugt, sonst erste Expense-Kategorie.
+function pickDefaultExpenseCategoryId(source: Category[]): string {
+  const expense = source.filter((c) => c.type === 'Expense')
+  const food = expense.find((c) => c.name.trim().toLowerCase() === 'essen')
+  return (food ?? expense[0])?.id ?? ''
+}
 
 const monthlySpentByCategory = computed(() => {
   const now = new Date()
@@ -1143,6 +1156,201 @@ function getCatalogEstimate(catalogItemId: string, quantity: number) {
   }
 }
 
+function normalizeMatchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+}
+
+function scoreCatalogCandidate(query: string, candidate: CatalogItem) {
+  const haystacks = [candidate.name, candidate.searchTerm ?? '', candidate.brandHint ?? '']
+  let score = 0
+
+  for (const haystack of haystacks) {
+    const normalized = normalizeMatchText(haystack)
+    if (!normalized) {
+      continue
+    }
+
+    if (normalized === query) {
+      score = Math.max(score, 100)
+    } else if (normalized.startsWith(query) || query.startsWith(normalized)) {
+      score = Math.max(score, 80)
+    } else if (normalized.includes(query) || query.includes(normalized)) {
+      score = Math.max(score, 60)
+    }
+  }
+
+  return score
+}
+
+function matchCatalogItem(rawName: string): { item: CatalogItem; score: number } | null {
+  const query = normalizeMatchText(rawName)
+  if (!query) {
+    return null
+  }
+
+  let best: { item: CatalogItem; score: number } | null = null
+
+  for (const candidate of catalogItems.value) {
+    const score = scoreCatalogCandidate(query, candidate)
+    if (score > 0 && (!best || score > best.score)) {
+      best = { item: candidate, score }
+    }
+  }
+
+  return best
+}
+
+// Erkennt führende Menge/Einheit wie „2 Milch“ oder „3 kg Kartoffeln“; sonst Menge 1.
+function parseNotebookLine(raw: string): { name: string; quantity: number; unit: string | null } {
+  const trimmed = raw.trim()
+  const match = trimmed.match(
+    /^(\d+(?:[.,]\d+)?)\s*(stk|stück|x|kg|g|l|ml|dose|dosen|pkg|packung|packungen)?\s+(.+)$/i,
+  )
+
+  const [, amount, unit, rest] = match ?? []
+  if (amount && rest) {
+    return {
+      quantity: Number(amount.replace(',', '.')),
+      unit: unit ? unit.trim() : null,
+      name: rest.trim(),
+    }
+  }
+
+  return { name: trimmed, quantity: 1, unit: null }
+}
+
+async function createCatalogItemFromName(name: string, unit: string): Promise<CatalogItem | null> {
+  try {
+    const created = await apiFetch<CatalogItem>('/catalog', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        defaultUnit: unit || 'Stk',
+        category: null,
+        searchTerm: name,
+        brandHint: null,
+        isStaple: false,
+      }),
+    })
+
+    catalogItems.value.push(created)
+    return created
+  } catch (err) {
+    // Offline oder Fehler: Artikel wird ohne Katalog-Verknüpfung angelegt.
+    console.error(err)
+    return null
+  }
+}
+
+async function addNotebookItem(text: string) {
+  const parsed = parseNotebookLine(text)
+  if (!parsed.name) {
+    return
+  }
+
+  const match = matchCatalogItem(parsed.name)
+  let catalogItemId = ''
+  let unit = parsed.unit ?? ''
+
+  if (match && match.score >= MATCH_THRESHOLD) {
+    catalogItemId = match.item.id
+    if (!unit) {
+      unit = match.item.defaultUnit
+    }
+  } else {
+    // Eindeutig neuer Eintrag → neuen Katalogeintrag anlegen.
+    const created = await createCatalogItemFromName(parsed.name, unit || 'Stk')
+    if (created) {
+      catalogItemId = created.id
+      if (!unit) {
+        unit = created.defaultUnit
+      }
+    }
+  }
+
+  newItem.value = {
+    name: parsed.name,
+    requiredQuantity: parsed.quantity,
+    inventoryQuantityUsed: 0,
+    quantity: parsed.quantity,
+    purchasedQuantity: 0,
+    unit: unit || 'Stk',
+    sourceType: 'Manual',
+    catalogItemId,
+  }
+
+  await createItem()
+}
+
+async function commitNewLine() {
+  const text = newLineText.value.trim()
+  if (!text || !selectedListId.value) {
+    return
+  }
+
+  newLineText.value = ''
+  await addNotebookItem(text)
+}
+
+async function commitItemName(item: ShoppingItem, rawName: string) {
+  const text = rawName.trim()
+  if (!text || text === item.name || !selectedListId.value) {
+    return
+  }
+
+  const match = matchCatalogItem(text)
+  const catalogItemId =
+    match && match.score >= MATCH_THRESHOLD ? match.item.id : item.catalogItemId ?? null
+  const payload = buildUpdateItemPayload(item, { name: text, catalogItemId })
+
+  if (isTempId(item.id)) {
+    updateQueuedCreateItem(item.id, payload)
+    applyLocalItemUpsert(item.shoppingListId, {
+      ...item,
+      ...payload,
+      catalogItemName: getCatalogItemName(payload.catalogItemId),
+    })
+    return
+  }
+
+  try {
+    await apiFetch<ShoppingItem>(`/shoppinglists/${selectedListId.value}/items/${item.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+    await loadData()
+  } catch (err) {
+    console.error(err)
+    if (!isOfflineError(err)) {
+      error.value = err instanceof Error ? err.message : 'Artikel konnte nicht aktualisiert werden.'
+      return
+    }
+    queueUpdateMutation(selectedListId.value, item.id, payload)
+    applyLocalItemUpsert(item.shoppingListId, {
+      ...item,
+      ...payload,
+      catalogItemName: getCatalogItemName(payload.catalogItemId),
+    })
+    success.value = 'Aenderung offline vorgemerkt.'
+  }
+}
+
+function onNotebookBackspace(item: ShoppingItem, event: KeyboardEvent) {
+  const input = event.target as HTMLInputElement
+  if (input.value === '') {
+    event.preventDefault()
+    void deleteItem(item.id)
+  }
+}
+
+function toggleMatchingMode() {
+  matchingMode.value = matchingMode.value === 'client' ? 'llm' : 'client'
+}
+
 function getNewPriceOptionState(item: ShoppingItem) {
   if (!newPriceOptionByItemId.value[item.id]) {
     newPriceOptionByItemId.value[item.id] = {
@@ -1164,19 +1372,41 @@ function loadStoreSummaries() {
   const storeMap = new Map<string, ShoppingListStoreSummary>()
 
   for (const item of items) {
-    const cheapestOptionByStore = new Map<string, ShoppingItemPriceOption>()
+    const quantity = item.quantity > 0 ? item.quantity : 1
+    const cheapestByStore = new Map<string, number>()
 
-    for (const option of item.priceOptions.filter((entry) => entry.isAvailable && entry.totalPrice != null)) {
-      const existing = cheapestOptionByStore.get(option.storeName)
-
-      if (!existing || option.totalPrice < existing.totalPrice) {
-        cheapestOptionByStore.set(option.storeName, option)
+    const considerPrice = (storeName: string, total: number) => {
+      const existing = cheapestByStore.get(storeName)
+      if (existing == null || total < existing) {
+        cheapestByStore.set(storeName, total)
       }
     }
 
-    for (const option of cheapestOptionByStore.values()) {
-      const current = storeMap.get(option.storeName) ?? {
-        storeName: option.storeName,
+    // Manuell gepflegte Preisoptionen des Artikels
+    for (const option of item.priceOptions) {
+      if (option.isAvailable && option.totalPrice != null) {
+        considerPrice(option.storeName, option.totalPrice)
+      }
+    }
+
+    // Katalogpreise des automatisch zugeordneten Artikels (× Menge)
+    const catalogItem = item.catalogItemId
+      ? catalogItems.value.find((entry) => entry.id === item.catalogItemId)
+      : undefined
+
+    for (const price of catalogItem?.prices ?? []) {
+      if (!price.isAvailable) {
+        continue
+      }
+      const unitTotal = price.totalPrice ?? price.unitPrice
+      if (unitTotal != null) {
+        considerPrice(price.storeName, unitTotal * quantity)
+      }
+    }
+
+    for (const [storeName, total] of cheapestByStore) {
+      const current = storeMap.get(storeName) ?? {
+        storeName,
         totalEstimatedPrice: 0,
         coveredItemsCount: 0,
         totalItemsCount: items.length,
@@ -1184,9 +1414,9 @@ function loadStoreSummaries() {
         isBestOption: false,
       }
 
-      current.totalEstimatedPrice += option.totalPrice
+      current.totalEstimatedPrice += total
       current.coveredItemsCount += 1
-      storeMap.set(option.storeName, current)
+      storeMap.set(storeName, current)
     }
   }
 
@@ -1236,8 +1466,7 @@ async function loadData() {
 
     for (const list of loadedShoppingLists) {
       if (!selectedExpenseCategoryId.value[list.id]) {
-        selectedExpenseCategoryId.value[list.id] =
-          loadedCategories.find((c) => c.type === 'Expense')?.id ?? ''
+        selectedExpenseCategoryId.value[list.id] = pickDefaultExpenseCategoryId(loadedCategories)
       }
     }
 
@@ -1276,8 +1505,7 @@ async function loadData() {
 
     for (const list of cached.value.shoppingLists) {
       if (!selectedExpenseCategoryId.value[list.id]) {
-        selectedExpenseCategoryId.value[list.id] =
-          cached.value.categories.find((c) => c.type === 'Expense')?.id ?? ''
+        selectedExpenseCategoryId.value[list.id] = pickDefaultExpenseCategoryId(cached.value.categories)
       }
     }
 
@@ -2306,6 +2534,61 @@ onUnmounted(() => {
               <button class="btn-add" type="submit">Artikel hinzufügen</button>
             </div>
           </form>
+        </div>
+
+        <div v-if="selectedList" class="sheet-card notebook-card">
+          <div class="sheet-header">
+            <div>
+              <h2 class="card-title">Notizblock</h2>
+              <p class="card-copy">Eine Zeile = ein Artikel. Tippen oder auf dem iPad mit Apple Pencil schreiben. Häkchen zum Abhaken; leere Zeile + Entfernen löscht den Artikel.</p>
+            </div>
+          </div>
+
+          <p class="match-mode-note">
+            Zuordnung: <strong>lokal im Browser</strong>
+            <button type="button" class="link-btn" @click="toggleMatchingMode">
+              {{ matchingMode === 'client' ? 'auf KI umstellen' : 'auf lokal zurück' }}
+            </button>
+            <span v-if="matchingMode === 'llm'"> · KI-Zuordnung ist vorbereitet, aber noch nicht aktiv – es wird weiter lokal zugeordnet.</span>
+          </p>
+
+          <div class="notebook-list">
+            <div
+              v-for="item in selectedList.items"
+              :key="item.id"
+              class="notebook-row"
+              :class="{ checked: item.isChecked }"
+            >
+              <label class="grocery-check">
+                <input :checked="item.isChecked" type="checkbox" @change="toggleItem(item)" />
+                <span class="grocery-check-mark"></span>
+              </label>
+              <input
+                class="notebook-input"
+                :value="item.name"
+                type="text"
+                enterkeyhint="next"
+                @keydown.enter.prevent="commitItemName(item, ($event.target as HTMLInputElement).value)"
+                @blur="commitItemName(item, ($event.target as HTMLInputElement).value)"
+                @keydown.delete="onNotebookBackspace(item, $event)"
+              />
+              <span class="notebook-amount">{{ item.quantity }} {{ item.unit }}</span>
+              <span v-if="item.catalogItemName" class="notebook-badge">{{ item.catalogItemName }}</span>
+              <span v-else class="notebook-badge notebook-badge-new">neu</span>
+            </div>
+
+            <div class="notebook-row notebook-row-new">
+              <span class="notebook-bullet">+</span>
+              <input
+                class="notebook-input"
+                v-model="newLineText"
+                type="text"
+                placeholder="Artikel schreiben …"
+                enterkeyhint="done"
+                @keydown.enter.prevent="commitNewLine"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -3432,6 +3715,20 @@ textarea {
 .receipt-sum { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; text-align: right; }
 .receipt-modal-footer { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
 .receipt-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* Notizblock-Eingabe */
+.notebook-card { gap: 14px; }
+.match-mode-note { font-size: 12px; color: var(--muted); margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.link-btn { background: none; border: none; padding: 0; color: var(--accent, #2d6cdf); font: inherit; cursor: pointer; text-decoration: underline; }
+.notebook-list { display: flex; flex-direction: column; }
+.notebook-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+.notebook-row.checked .notebook-input { text-decoration: line-through; color: var(--muted); }
+.notebook-input { flex: 1 1 auto; border: none; background: transparent; font-size: 15px; color: var(--text); padding: 4px 0; min-width: 0; }
+.notebook-input:focus { outline: none; }
+.notebook-amount { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.notebook-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-muted, #eef2f7); color: var(--muted); white-space: nowrap; }
+.notebook-badge-new { background: #fdf0d5; color: #9a6b00; }
+.notebook-row-new .notebook-bullet { width: 22px; text-align: center; color: var(--muted); font-size: 18px; }
 
 /* Kompaktere Abstände und volle Button-Breiten am Handy */
 @media (max-width: 560px) {
