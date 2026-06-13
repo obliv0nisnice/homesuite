@@ -258,7 +258,7 @@ function getCatColor(categoryName: string, categoryType: string) {
 }
 
 function isDarkMode() {
-  return document.querySelector('.dark-mode') !== null
+  return document.documentElement.getAttribute('data-bs-theme') === 'dark'
 }
 
 function intervalLabel(interval?: string | null) {
@@ -689,7 +689,7 @@ function renderCharts() { renderDonut(); renderBar() }
 onMounted(async () => {
   await loadData()
   const observer = new MutationObserver(() => nextTick(() => renderCharts()))
-  observer.observe(document.querySelector('.app-wrapper') || document.body, { attributes: true, attributeFilter: ['class'] })
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] })
 })
 
 watch(() => newTransaction.value.type, (type) => {
@@ -711,763 +711,466 @@ watch([txSearch, txTypeFilter], () => { txPage.value = 1 })
 </script>
 
 <template>
-  <div class="budget-page">
+  <BContainer class="py-4 d-flex flex-column gap-3">
 
-    <!-- ── Header ── -->
-    <div class="page-header">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3">
       <div>
-        <h1 class="page-title">Budget <span class="title-accent">Übersicht</span></h1>
-        <div class="month-nav">
-          <button class="btn-month" @click="goPrevMonth" title="Voriger Monat">‹</button>
-          <span class="month-label">{{ selectedMonthLabel }}</span>
-          <button class="btn-month" @click="goNextMonth" :disabled="isCurrentMonth" title="Nächster Monat">›</button>
+        <h1 class="h2 fw-bold mb-1">Budget <span class="text-primary">Übersicht</span></h1>
+        <div class="d-flex align-items-center gap-2">
+          <BButton size="sm" variant="outline-secondary" title="Voriger Monat" @click="goPrevMonth">‹</BButton>
+          <span class="fw-semibold" style="min-width: 130px; text-align: center;">{{ selectedMonthLabel }}</span>
+          <BButton size="sm" variant="outline-secondary" title="Nächster Monat" :disabled="isCurrentMonth" @click="goNextMonth">›</BButton>
         </div>
       </div>
-      <div class="page-actions">
-        <button class="btn-secondary" @click="loadData" :disabled="loading">↺ Neu laden</button>
-        <button class="btn-secondary" @click="showRecurringModal = true" v-if="recurringTransactions.length > 0">
-          🔁 Wiederkehrend <span class="badge-count">{{ recurringTransactions.length }}</span>
-        </button>
-        <button class="btn-add" @click="showAddModal = true">＋ Transaktion</button>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        <BButton variant="outline-secondary" :disabled="loading" @click="loadData">↺ Neu laden</BButton>
+        <BButton v-if="recurringTransactions.length > 0" variant="outline-secondary" @click="showRecurringModal = true">
+          🔁 Wiederkehrend <BBadge variant="primary">{{ recurringTransactions.length }}</BBadge>
+        </BButton>
+        <BButton variant="primary" @click="showAddModal = true">＋ Transaktion</BButton>
       </div>
     </div>
 
-    <!-- ── Alerts ── -->
-    <div v-if="error" class="alert alert-error">⚠ {{ error }}</div>
-    <div v-if="success" class="alert alert-success">✓ {{ success }}</div>
+    <!-- Alerts -->
+    <BAlert :model-value="!!error" variant="danger">⚠ {{ error }}</BAlert>
+    <BAlert :model-value="!!success" variant="success">✓ {{ success }}</BAlert>
 
-    <!-- ── KPI Cards ── -->
-    <div class="stats-grid">
-      <div class="stat-card stat-income">
-        <div class="stat-icon">💵</div>
-        <div class="stat-info">
-          <span class="stat-label">Einnahmen</span>
-          <span class="stat-value">€ {{ formatNum(totalIncome) }}</span>
-          <span class="stat-trend trend-up">{{ selectedMonthLabel }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-      <div class="stat-card stat-expenses">
-        <div class="stat-icon">💸</div>
-        <div class="stat-info">
-          <span class="stat-label">Ausgaben</span>
-          <span class="stat-value">€ {{ formatNum(totalExpenses) }}</span>
-          <span class="stat-trend trend-down">{{ expensePercent }}% der Einnahmen</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-      <div class="stat-card stat-balance">
-        <div class="stat-icon">🏦</div>
-        <div class="stat-info">
-          <span class="stat-label">Restbudget</span>
-          <span class="stat-value">€ {{ formatNum(balance) }}</span>
-          <span class="stat-trend" :class="balance >= 0 ? 'trend-up' : 'trend-down'">
+    <!-- KPI Cards -->
+    <BRow class="g-3">
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">💵 Einnahmen</div>
+          <div class="fs-4 fw-bold">€ {{ formatNum(totalIncome) }}</div>
+          <div class="text-success small">{{ selectedMonthLabel }}</div>
+        </BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">💸 Ausgaben</div>
+          <div class="fs-4 fw-bold">€ {{ formatNum(totalExpenses) }}</div>
+          <div class="text-danger small">{{ expensePercent }}% der Einnahmen</div>
+        </BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">🏦 Restbudget</div>
+          <div class="fs-4 fw-bold">€ {{ formatNum(balance) }}</div>
+          <div class="small" :class="balance >= 0 ? 'text-success' : 'text-danger'">
             {{ balance >= 0 ? '✓ Im grünen Bereich' : '⚠ Überzogen' }}
-          </span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-      <div class="stat-card stat-savings">
-        <div class="stat-icon">🎯</div>
-        <div class="stat-info">
-          <span class="stat-label">Sparquote</span>
-          <span class="stat-value">{{ savingsRate }}%</span>
-          <span class="stat-trend trend-up">Ziel: 20%</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-    </div>
+          </div>
+        </BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">🎯 Sparquote</div>
+          <div class="fs-4 fw-bold">{{ savingsRate }}%</div>
+          <div class="text-success small">Ziel: 20%</div>
+        </BCard>
+      </BCol>
+    </BRow>
 
-    <!-- ── Charts Row ── -->
-    <div class="charts-row">
-      <div class="chart-card chart-donut-card">
-        <div class="chart-header">
-          <span class="chart-title">Verteilung</span>
-          <span class="chart-badge">{{ selectedMonthLabel }}</span>
-        </div>
-        <div class="donut-wrapper">
-          <canvas ref="donutRef" width="220" height="220"></canvas>
-          <div class="donut-center">
-            <span class="donut-total">€{{ formatNum(balance) }}</span>
-            <span class="donut-label">Bilanz</span>
+    <!-- Charts Row -->
+    <BRow class="g-3">
+      <BCol lg="4">
+        <BCard>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="fw-bold">Verteilung</span>
+            <BBadge variant="primary">{{ selectedMonthLabel }}</BBadge>
           </div>
-        </div>
-        <div class="legend">
-          <div class="legend-section-header">
-            <span class="legend-section-dot income-dot"></span>
-            <span class="legend-section-title">Einnahmen</span>
+          <div class="donut-wrapper">
+            <canvas ref="donutRef" width="220" height="220"></canvas>
+            <div class="donut-center">
+              <span class="d-block fw-bold">€{{ formatNum(balance) }}</span>
+              <span class="text-secondary small">Bilanz</span>
+            </div>
           </div>
-          <div v-for="cat in incomeCategories.filter(c => c.amount > 0)" :key="'i-' + cat.id" class="legend-item">
-            <span class="legend-dot" :style="{ background: cat.color }"></span>
-            <span class="legend-name">{{ cat.name }}</span>
-            <span class="legend-val amount-pos">+€{{ formatNum(cat.amount) }}</span>
+          <div class="d-flex flex-column gap-1 mt-2" style="max-height: 220px; overflow-y: auto;">
+            <div class="text-secondary text-uppercase small fw-bold">Einnahmen</div>
+            <div v-for="cat in incomeCategories.filter(c => c.amount > 0)" :key="'i-' + cat.id" class="d-flex align-items-center gap-2 small">
+              <span class="rounded-circle" :style="{ background: cat.color, width: '8px', height: '8px' }"></span>
+              <span class="flex-grow-1">{{ cat.name }}</span>
+              <span class="fw-semibold text-success">+€{{ formatNum(cat.amount) }}</span>
+            </div>
+            <div v-if="!incomeCategories.some(c => c.amount > 0)" class="text-secondary fst-italic small">Keine Einnahmen</div>
+            <div class="text-secondary text-uppercase small fw-bold mt-2">Ausgaben</div>
+            <div v-for="cat in expenseCategories.filter(c => c.amount > 0)" :key="'e-' + cat.id" class="d-flex align-items-center gap-2 small">
+              <span class="rounded-circle" :style="{ background: cat.color, width: '8px', height: '8px' }"></span>
+              <span class="flex-grow-1">{{ cat.name }}</span>
+              <span class="fw-semibold text-danger">-€{{ formatNum(cat.amount) }}</span>
+            </div>
+            <div v-if="!expenseCategories.some(c => c.amount > 0)" class="text-secondary fst-italic small">Keine Ausgaben</div>
           </div>
-          <div v-if="!incomeCategories.some(c => c.amount > 0)" class="legend-empty">Keine Einnahmen</div>
-          <div class="legend-section-header" style="margin-top: 8px">
-            <span class="legend-section-dot expense-dot"></span>
-            <span class="legend-section-title">Ausgaben</span>
-          </div>
-          <div v-for="cat in expenseCategories.filter(c => c.amount > 0)" :key="'e-' + cat.id" class="legend-item">
-            <span class="legend-dot" :style="{ background: cat.color }"></span>
-            <span class="legend-name">{{ cat.name }}</span>
-            <span class="legend-val amount-neg">-€{{ formatNum(cat.amount) }}</span>
-          </div>
-          <div v-if="!expenseCategories.some(c => c.amount > 0)" class="legend-empty">Keine Ausgaben</div>
-        </div>
-      </div>
+        </BCard>
+      </BCol>
 
-      <div class="chart-card chart-bar-card">
-        <div class="chart-header">
-          <span class="chart-title">Monatsverlauf</span>
-          <div class="chart-legend-inline">
-            <span><span class="dot dot-income"></span> Einnahmen</span>
-            <span><span class="dot dot-expense"></span> Ausgaben</span>
+      <BCol lg="8">
+        <BCard>
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <span class="fw-bold">Monatsverlauf</span>
+            <div class="d-flex gap-3 small text-secondary">
+              <span><span class="d-inline-block rounded me-1" style="width:9px;height:9px;background:#10b981"></span> Einnahmen</span>
+              <span><span class="d-inline-block rounded me-1" style="width:9px;height:9px;background:#ef4444"></span> Ausgaben</span>
+            </div>
           </div>
-        </div>
-        <canvas ref="barRef" width="480" height="240"></canvas>
-      </div>
-    </div>
+          <canvas ref="barRef" width="480" height="240" class="w-100"></canvas>
+        </BCard>
+      </BCol>
+    </BRow>
 
-    <!-- ── Budget Limits ── -->
-    <div class="budget-limits-card" v-if="expenseCategories.length > 0">
-      <div class="chart-header">
-        <span class="chart-title">Budget-Limits</span>
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <span class="chart-badge warning" v-if="overBudgetCount > 0">{{ overBudgetCount }} überschritten</span>
-          <button class="btn-edit-limits" @click="openBudgetLimitModal">✏️ Limits anpassen</button>
+    <!-- Budget Limits -->
+    <BCard v-if="expenseCategories.length > 0">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <span class="fw-bold">Budget-Limits</span>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <BBadge v-if="overBudgetCount > 0" variant="danger">{{ overBudgetCount }} überschritten</BBadge>
+          <BButton size="sm" variant="outline-secondary" @click="openBudgetLimitModal">✏️ Limits anpassen</BButton>
         </div>
       </div>
-      <div class="progress-list">
-        <div v-for="cat in expenseCategories" :key="cat.id" class="progress-item">
-          <div class="progress-header">
-            <span class="progress-name">{{ cat.icon }} {{ cat.name }}</span>
-            <span class="progress-nums">
+      <div class="d-flex flex-column gap-3">
+        <div v-for="cat in expenseCategories" :key="cat.id">
+          <div class="d-flex justify-content-between align-items-center small mb-1">
+            <span>{{ cat.icon }} {{ cat.name }}</span>
+            <span>
               <strong>€{{ formatNum(cat.amount) }}</strong> / €{{ formatNum(cat.limit) }}
-              <span v-if="!cat.hasCustomLimit" class="limit-auto-tag" title="Kein eigenes Limit gesetzt — wird aus den Ausgaben abgeleitet und ändert sich monatlich. Über „Limits anpassen“ fixieren.">auto</span>
+              <BBadge v-if="!cat.hasCustomLimit" variant="secondary" title="Kein eigenes Limit gesetzt — wird aus den Ausgaben abgeleitet.">auto</BBadge>
             </span>
           </div>
-          <div class="progress-track">
-            <div class="progress-fill" :style="{
-              width: Math.min(100, (cat.amount / cat.limit) * 100) + '%',
-              background: cat.amount > cat.limit ? '#ef4444' : cat.color,
-            }"></div>
+          <div class="progress" style="height: 7px;">
+            <div
+              class="progress-bar"
+              role="progressbar"
+              :style="{
+                width: Math.min(100, (cat.amount / cat.limit) * 100) + '%',
+                backgroundColor: cat.amount > cat.limit ? '#ef4444' : cat.color,
+              }"
+            ></div>
           </div>
-          <span class="progress-pct" :class="{ danger: cat.amount > cat.limit }">
+          <div class="text-end small" :class="{ 'text-danger fw-semibold': cat.amount > cat.limit, 'text-secondary': cat.amount <= cat.limit }">
             {{ Math.round((cat.amount / cat.limit) * 100) }}%
-          </span>
+          </div>
         </div>
       </div>
-    </div>
+    </BCard>
 
-    <!-- ── Transactions Table ── -->
-    <div class="transactions-card">
-      <div class="chart-header">
-        <span class="chart-title">Transaktionen · {{ selectedMonthLabel }}</span>
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <button
-            v-if="recurringTransactions.length > 0"
-            class="btn-recurring-manage"
-            @click="showRecurringModal = true"
-          >
+    <!-- Transactions -->
+    <BCard>
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <span class="fw-bold">Transaktionen · {{ selectedMonthLabel }}</span>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <BButton v-if="recurringTransactions.length > 0" size="sm" variant="outline-primary" @click="showRecurringModal = true">
             🔁 Wiederkehrend verwalten
-          </button>
-          <span class="chart-badge">{{ filteredTransactions.length }} Einträge</span>
+          </BButton>
+          <BBadge variant="primary">{{ filteredTransactions.length }} Einträge</BBadge>
         </div>
       </div>
-      <form class="quick-add-bar" @submit.prevent="addTransaction">
-        <div class="type-toggle quick-type">
-          <button type="button" class="type-btn" :class="{ active: newTransaction.type === 'Expense' }" @click="newTransaction.type = 'Expense'" title="Ausgabe">💸</button>
-          <button type="button" class="type-btn" :class="{ active: newTransaction.type === 'Income' }" @click="newTransaction.type = 'Income'" title="Einnahme">💵</button>
-        </div>
-        <input v-model="newTransaction.title" class="form-input quick-title" type="text" placeholder="Beschreibung, z. B. Supermarkt" required />
-        <input v-model.number="newTransaction.amount" class="form-input quick-amount" type="number" step="0.01" min="0.01" placeholder="€ 0,00" required />
-        <select v-model="newTransaction.categoryId" class="form-input quick-cat" required>
-          <option value="" disabled>Kategorie</option>
-          <option v-for="cat in filteredCategoriesForModal" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-        </select>
-        <button class="btn-add quick-submit" type="submit">＋ Hinzufügen</button>
-      </form>
 
-      <div class="tx-filter-bar">
-        <input
-          v-model="txSearch"
-          class="form-input tx-search"
-          type="search"
-          placeholder="🔍 Suchen (Titel, Notiz, Kategorie) …"
-        />
-        <select v-model="txTypeFilter" class="form-input tx-type-filter">
+      <BForm class="mb-3" @submit.prevent="addTransaction">
+        <BRow class="g-2 align-items-center">
+          <BCol cols="auto">
+            <BButtonGroup>
+              <BButton size="sm" :variant="newTransaction.type === 'Expense' ? 'primary' : 'outline-primary'" type="button" title="Ausgabe" @click="newTransaction.type = 'Expense'">💸</BButton>
+              <BButton size="sm" :variant="newTransaction.type === 'Income' ? 'primary' : 'outline-primary'" type="button" title="Einnahme" @click="newTransaction.type = 'Income'">💵</BButton>
+            </BButtonGroup>
+          </BCol>
+          <BCol><BFormInput v-model="newTransaction.title" type="text" placeholder="Beschreibung, z. B. Supermarkt" required /></BCol>
+          <BCol cols="auto"><BFormInput v-model.number="newTransaction.amount" type="number" step="0.01" min="0.01" placeholder="€ 0,00" required style="max-width: 120px;" /></BCol>
+          <BCol cols="auto">
+            <BFormSelect v-model="newTransaction.categoryId" required>
+              <option value="" disabled>Kategorie</option>
+              <option v-for="cat in filteredCategoriesForModal" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+            </BFormSelect>
+          </BCol>
+          <BCol cols="auto"><BButton variant="primary" type="submit">＋ Hinzufügen</BButton></BCol>
+        </BRow>
+      </BForm>
+
+      <div class="d-flex gap-2 mb-3 flex-wrap">
+        <BFormInput v-model="txSearch" type="search" placeholder="🔍 Suchen (Titel, Notiz, Kategorie) …" class="flex-grow-1" style="min-width: 180px;" />
+        <BFormSelect v-model="txTypeFilter" style="width: auto;">
           <option value="all">Alle Typen</option>
           <option value="Income">Einnahmen</option>
           <option value="Expense">Ausgaben</option>
-        </select>
-      </div>
-      <div class="trans-table">
-        <div class="trans-row header-row">
-          <span>Datum</span>
-          <span>Beschreibung</span>
-          <span>Kategorie</span>
-          <span class="text-right">Betrag</span>
-          <span></span>
-        </div>
-        <div v-for="tx in pagedTransactions" :key="tx.id" class="trans-row">
-          <span class="trans-date">{{ formatDate(tx.date) }}</span>
-          <span class="trans-desc">
-            <span>{{ tx.title }}</span>
-            <span v-if="tx.isRecurring" class="recurring-inline-badge"
-              :title="`Wiederkehrend: ${intervalLabel(tx.recurringInterval)}`">
-              {{ intervalIcon(tx.recurringInterval) }} {{ intervalLabel(tx.recurringInterval) }}
-            </span>
-          </span>
-          <span class="trans-cat">
-            <span class="cat-chip" :style="{
-              background: getCatColor(tx.categoryName, tx.categoryType) + '22',
-              color: getCatColor(tx.categoryName, tx.categoryType),
-            }">{{ tx.categoryName || '—' }}</span>
-          </span>
-          <span class="trans-amount" :class="tx.categoryType === 'Income' ? 'amount-pos' : 'amount-neg'">
-            {{ tx.categoryType === 'Income' ? '+' : '-' }}€{{ Math.abs(tx.amount).toFixed(2) }}
-          </span>
-          <span class="trans-actions">
-            <button
-              v-if="tx.isRecurring"
-              class="btn-stop-inline"
-              @click="stopRecurring(tx)"
-              :disabled="stoppingRecurringId === tx.id"
-              title="Wiederkehrend ausschalten"
-            >
-              {{ stoppingRecurringId === tx.id ? '…' : '⏹' }}
-            </button>
-            <button class="btn-edit" @click="openEditModal(tx)" title="Bearbeiten">✏️</button>
-            <button class="btn-delete" @click="deleteTransaction(tx.id)" :disabled="deletingId === tx.id" title="Löschen">
-              {{ deletingId === tx.id ? '…' : '✕' }}
-            </button>
-          </span>
-        </div>
-        <div v-if="filteredTransactions.length === 0" class="empty-state">Keine Transaktionen für diesen Monat/Filter.</div>
-      </div>
-      <div v-if="txTotalPages > 1" class="tx-pagination">
-        <button class="btn-page" :disabled="txPage <= 1" @click="txPage--">‹ Zurück</button>
-        <span class="tx-page-label">Seite {{ Math.min(txPage, txTotalPages) }} / {{ txTotalPages }}</span>
-        <button class="btn-page" :disabled="txPage >= txTotalPages" @click="txPage++">Weiter ›</button>
-      </div>
-    </div>
-
-    <!-- ── Management ── -->
-    <div class="management-grid">
-      <div class="management-card">
-        <div class="chart-header"><span class="chart-title">Kategorie anlegen</span></div>
-        <form class="management-form" @submit.prevent="createCategory">
-          <div class="form-group">
-            <label>Name</label>
-            <input v-model="newCategory.name" class="form-input" type="text" placeholder="z. B. Versicherungen" required />
-          </div>
-          <div class="form-group">
-            <label>Typ</label>
-            <select v-model="newCategory.type" class="form-input">
-              <option value="Expense">Ausgabe</option>
-              <option value="Income">Einnahme</option>
-            </select>
-          </div>
-          <button class="btn-save" type="submit">Kategorie speichern</button>
-        </form>
+        </BFormSelect>
       </div>
 
-      <div class="management-card">
-        <div class="chart-header">
-          <span class="chart-title">Kategorien</span>
-          <span class="chart-badge">{{ categories.length }} gesamt</span>
-        </div>
-        <div class="category-list">
-          <div v-for="category in categories" :key="category.id" class="category-row">
-            <span class="category-name">{{ category.name }}</span>
-            <div class="category-row-actions">
-              <span class="cat-chip small-chip" :class="category.type === 'Income' ? 'chip-income' : 'chip-expense'">
-                {{ category.type === 'Income' ? 'Einnahme' : 'Ausgabe' }}
-              </span>
-              <button class="btn-delete" @click="deleteCategory(category.id, category.name)"
-                :disabled="deletingCategoryId === category.id" title="Kategorie löschen">
-                {{ deletingCategoryId === category.id ? '…' : '✕' }}
-              </button>
+      <BTableSimple hover responsive class="align-middle">
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Beschreibung</th>
+            <th>Kategorie</th>
+            <th class="text-end">Betrag</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="tx in pagedTransactions" :key="tx.id">
+            <td class="text-secondary">{{ formatDate(tx.date) }}</td>
+            <td>
+              <span class="fw-medium">{{ tx.title }}</span>
+              <BBadge v-if="tx.isRecurring" variant="primary" class="ms-1" :title="`Wiederkehrend: ${intervalLabel(tx.recurringInterval)}`">
+                {{ intervalIcon(tx.recurringInterval) }} {{ intervalLabel(tx.recurringInterval) }}
+              </BBadge>
+            </td>
+            <td>
+              <span class="badge rounded-pill" :style="{
+                background: getCatColor(tx.categoryName, tx.categoryType) + '22',
+                color: getCatColor(tx.categoryName, tx.categoryType),
+              }">{{ tx.categoryName || '—' }}</span>
+            </td>
+            <td class="text-end fw-bold" :class="tx.categoryType === 'Income' ? 'text-success' : 'text-danger'">
+              {{ tx.categoryType === 'Income' ? '+' : '-' }}€{{ Math.abs(tx.amount).toFixed(2) }}
+            </td>
+            <td class="text-end">
+              <BButton v-if="tx.isRecurring" size="sm" variant="link" class="p-1 text-secondary" :disabled="stoppingRecurringId === tx.id" title="Wiederkehrend ausschalten" @click="stopRecurring(tx)">
+                {{ stoppingRecurringId === tx.id ? '…' : '⏹' }}
+              </BButton>
+              <BButton size="sm" variant="link" class="p-1 text-secondary" title="Bearbeiten" @click="openEditModal(tx)">✏️</BButton>
+              <BButton size="sm" variant="link" class="p-1 text-secondary" :disabled="deletingId === tx.id" title="Löschen" @click="deleteTransaction(tx.id)">
+                {{ deletingId === tx.id ? '…' : '✕' }}
+              </BButton>
+            </td>
+          </tr>
+          <tr v-if="filteredTransactions.length === 0">
+            <td colspan="5" class="text-center text-secondary py-4">Keine Transaktionen für diesen Monat/Filter.</td>
+          </tr>
+        </tbody>
+      </BTableSimple>
+
+      <div v-if="txTotalPages > 1" class="d-flex align-items-center justify-content-center gap-3 pt-2">
+        <BButton size="sm" variant="outline-secondary" :disabled="txPage <= 1" @click="txPage--">‹ Zurück</BButton>
+        <span class="small text-secondary">Seite {{ Math.min(txPage, txTotalPages) }} / {{ txTotalPages }}</span>
+        <BButton size="sm" variant="outline-secondary" :disabled="txPage >= txTotalPages" @click="txPage++">Weiter ›</BButton>
+      </div>
+    </BCard>
+
+    <!-- Management -->
+    <BRow class="g-3">
+      <BCol md="6">
+        <BCard title="Kategorie anlegen">
+          <BForm class="d-flex flex-column gap-3" @submit.prevent="createCategory">
+            <div>
+              <label class="form-label small fw-semibold">Name</label>
+              <BFormInput v-model="newCategory.name" type="text" placeholder="z. B. Versicherungen" required />
             </div>
+            <div>
+              <label class="form-label small fw-semibold">Typ</label>
+              <BFormSelect v-model="newCategory.type">
+                <option value="Expense">Ausgabe</option>
+                <option value="Income">Einnahme</option>
+              </BFormSelect>
+            </div>
+            <div><BButton type="submit" variant="primary">Kategorie speichern</BButton></div>
+          </BForm>
+        </BCard>
+      </BCol>
+
+      <BCol md="6">
+        <BCard>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="fw-bold">Kategorien</span>
+            <BBadge variant="primary">{{ categories.length }} gesamt</BBadge>
           </div>
-          <div v-if="categories.length === 0" class="empty-state">Noch keine Kategorien.</div>
-        </div>
-      </div>
-    </div>
+          <div class="d-flex flex-column gap-2">
+            <div v-for="category in categories" :key="category.id" class="d-flex justify-content-between align-items-center border rounded p-2 bg-body-tertiary">
+              <span class="text-truncate">{{ category.name }}</span>
+              <div class="d-flex align-items-center gap-2">
+                <BBadge :variant="category.type === 'Income' ? 'success' : 'danger'">
+                  {{ category.type === 'Income' ? 'Einnahme' : 'Ausgabe' }}
+                </BBadge>
+                <BButton size="sm" variant="link" class="p-1 text-secondary" :disabled="deletingCategoryId === category.id" title="Kategorie löschen" @click="deleteCategory(category.id, category.name)">
+                  {{ deletingCategoryId === category.id ? '…' : '✕' }}
+                </BButton>
+              </div>
+            </div>
+            <div v-if="categories.length === 0" class="text-center text-secondary py-3">Noch keine Kategorien.</div>
+          </div>
+        </BCard>
+      </BCol>
+    </BRow>
 
     <!-- ══════════════ MODALS ══════════════ -->
-    <Teleport to="body">
 
-      <!-- Add Transaction -->
-      <div v-if="showAddModal" class="modal-backdrop" @click.self="showAddModal = false">
-        <div class="modal-box">
-          <div class="modal-header">
-            <h2>Neue Transaktion</h2>
-            <button class="modal-close" @click="showAddModal = false">✕</button>
+    <!-- Add Transaction -->
+    <BModal v-model="showAddModal" title="Neue Transaktion" ok-title="Speichern" cancel-title="Abbrechen" @ok="addTransaction">
+      <div class="d-flex flex-column gap-3">
+        <BButtonGroup class="w-100">
+          <BButton :variant="newTransaction.type === 'Expense' ? 'primary' : 'outline-primary'" @click="newTransaction.type = 'Expense'">💸 Ausgabe</BButton>
+          <BButton :variant="newTransaction.type === 'Income' ? 'primary' : 'outline-primary'" @click="newTransaction.type = 'Income'">💵 Einnahme</BButton>
+        </BButtonGroup>
+        <div>
+          <label class="form-label small fw-semibold">Beschreibung</label>
+          <BFormInput v-model="newTransaction.title" placeholder="z. B. Supermarkt" />
+        </div>
+        <BRow class="g-2">
+          <BCol>
+            <label class="form-label small fw-semibold">Betrag (€)</label>
+            <BFormInput v-model.number="newTransaction.amount" type="number" step="0.01" min="0" placeholder="0,00" />
+          </BCol>
+          <BCol>
+            <label class="form-label small fw-semibold">Datum</label>
+            <BFormInput v-model="newTransaction.date" type="date" />
+          </BCol>
+        </BRow>
+        <div>
+          <label class="form-label small fw-semibold">Kategorie</label>
+          <BFormSelect v-model="newTransaction.categoryId">
+            <option v-for="cat in filteredCategoriesForModal" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+          </BFormSelect>
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Notiz <span class="text-secondary fw-normal">optional</span></label>
+          <BFormInput v-model="newTransaction.note" type="text" placeholder="Kurze Anmerkung …" />
+        </div>
+        <div class="border rounded p-3 bg-body-tertiary">
+          <BFormCheckbox v-model="newTransaction.isRecurring" switch>🔁 Wiederkehrend</BFormCheckbox>
+          <BFormRadioGroup
+            v-if="newTransaction.isRecurring"
+            v-model="newTransaction.recurringInterval"
+            class="mt-2"
+            buttons
+            button-variant="outline-primary"
+            size="sm"
+            :options="[
+              { text: 'Wöchentlich', value: 'weekly' },
+              { text: 'Monatlich', value: 'monthly' },
+              { text: 'Quartalsweise', value: 'quarterly' },
+              { text: 'Jährlich', value: 'yearly' },
+            ]"
+          />
+        </div>
+      </div>
+    </BModal>
+
+    <!-- Edit Transaction -->
+    <BModal
+      v-model="showEditModal"
+      :title="editingTemplate ? '🔁 Vorlage bearbeiten' : 'Transaktion bearbeiten'"
+      :ok-title="savingEdit ? 'Speichert…' : 'Speichern'"
+      cancel-title="Abbrechen"
+      :ok-disabled="savingEdit"
+      @ok.prevent="saveEdit"
+    >
+      <div v-if="editTransaction" class="d-flex flex-column gap-3">
+        <p v-if="editingTemplate" class="text-secondary small mb-0">
+          Änderungen gelten für alle künftigen Buchungen. Einen einzelnen Monat bearbeitest du direkt in der Transaktionsliste.
+        </p>
+        <BButtonGroup class="w-100">
+          <BButton :variant="editTransaction.type === 'Expense' ? 'primary' : 'outline-primary'" @click="editTransaction.type = 'Expense'">💸 Ausgabe</BButton>
+          <BButton :variant="editTransaction.type === 'Income' ? 'primary' : 'outline-primary'" @click="editTransaction.type = 'Income'">💵 Einnahme</BButton>
+        </BButtonGroup>
+        <div>
+          <label class="form-label small fw-semibold">Beschreibung</label>
+          <BFormInput v-model="editTransaction.title" />
+        </div>
+        <BRow class="g-2">
+          <BCol>
+            <label class="form-label small fw-semibold">Betrag (€)</label>
+            <BFormInput v-model.number="editTransaction.amount" type="number" step="0.01" min="0" />
+          </BCol>
+          <BCol>
+            <label class="form-label small fw-semibold">Datum</label>
+            <BFormInput v-model="editTransaction.date" type="date" />
+          </BCol>
+        </BRow>
+        <div>
+          <label class="form-label small fw-semibold">Kategorie</label>
+          <BFormSelect v-model="editTransaction.categoryId">
+            <option v-for="cat in filteredCategoriesForEdit" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+          </BFormSelect>
+        </div>
+        <div>
+          <label class="form-label small fw-semibold">Notiz <span class="text-secondary fw-normal">optional</span></label>
+          <BFormInput v-model="editTransaction.note" type="text" placeholder="Kurze Anmerkung …" />
+        </div>
+        <div class="border rounded p-3 bg-body-tertiary">
+          <BFormCheckbox v-if="!editingTemplate" v-model="editTransaction.isRecurring" switch>🔁 Wiederkehrend</BFormCheckbox>
+          <span v-else class="small fw-semibold">🔁 Intervall</span>
+          <BFormRadioGroup
+            v-if="editTransaction.isRecurring"
+            v-model="editTransaction.recurringInterval"
+            class="mt-2"
+            buttons
+            button-variant="outline-primary"
+            size="sm"
+            :options="[
+              { text: 'Wöchentlich', value: 'weekly' },
+              { text: 'Monatlich', value: 'monthly' },
+              { text: 'Quartalsweise', value: 'quarterly' },
+              { text: 'Jährlich', value: 'yearly' },
+            ]"
+          />
+        </div>
+      </div>
+    </BModal>
+
+    <!-- Recurring Overview -->
+    <BModal v-model="showRecurringModal" title="🔁 Wiederkehrende Transaktionen" size="lg" ok-only ok-title="Schließen">
+      <div v-if="recurringTransactions.length === 0" class="text-center text-secondary py-4">Keine wiederkehrenden Transaktionen.</div>
+      <div v-else class="d-flex flex-column">
+        <div v-for="tx in recurringTransactions" :key="'rm-' + tx.id" class="d-flex align-items-center justify-content-between gap-3 py-3 border-bottom flex-wrap">
+          <div class="d-flex align-items-center gap-3">
+            <span class="fs-4">{{ intervalIcon(tx.recurringInterval) }}</span>
+            <div>
+              <div class="fw-semibold">{{ tx.title }}</div>
+              <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
+                <BBadge variant="primary">{{ intervalLabel(tx.recurringInterval) }}</BBadge>
+                <span class="badge rounded-pill" :style="{
+                  background: getCatColor(tx.categoryName, tx.categoryType) + '22',
+                  color: getCatColor(tx.categoryName, tx.categoryType),
+                }">{{ tx.categoryName }}</span>
+                <span v-if="tx.nextDueDate" class="text-secondary small">Nächste: {{ formatDate(tx.nextDueDate) }}</span>
+              </div>
+            </div>
           </div>
-          <div class="modal-body">
-            <div class="type-toggle">
-              <button class="type-btn" :class="{ active: newTransaction.type === 'Expense' }" @click="newTransaction.type = 'Expense'">💸 Ausgabe</button>
-              <button class="type-btn" :class="{ active: newTransaction.type === 'Income' }" @click="newTransaction.type = 'Income'">💵 Einnahme</button>
-            </div>
-            <div class="form-group">
-              <label>Beschreibung</label>
-              <input v-model="newTransaction.title" class="form-input" placeholder="z. B. Supermarkt" />
-            </div>
-            <div class="form-row-2">
-              <div class="form-group">
-                <label>Betrag (€)</label>
-                <input v-model.number="newTransaction.amount" class="form-input" type="number" step="0.01" min="0" placeholder="0,00" />
-              </div>
-              <div class="form-group">
-                <label>Datum</label>
-                <input v-model="newTransaction.date" class="form-input" type="date" />
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Kategorie</label>
-              <select v-model="newTransaction.categoryId" class="form-input">
-                <option v-for="cat in filteredCategoriesForModal" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Notiz <span class="optional">optional</span></label>
-              <input v-model="newTransaction.note" class="form-input" type="text" placeholder="Kurze Anmerkung …" />
-            </div>
-            <div class="recurring-section">
-              <label class="recurring-toggle">
-                <span class="toggle-label">🔁 Wiederkehrend</span>
-                <div class="toggle-switch">
-                  <input type="checkbox" v-model="newTransaction.isRecurring" />
-                  <span class="toggle-slider"></span>
-                </div>
-              </label>
-              <div v-if="newTransaction.isRecurring" class="interval-options" style="margin-top: 12px">
-                <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'weekly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="weekly" />Wöchentlich</label>
-                <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'monthly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="monthly" />Monatlich</label>
-                <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'quarterly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="quarterly" />Quartalsweise</label>
-                <label class="interval-opt" :class="{ active: newTransaction.recurringInterval === 'yearly' }"><input type="radio" v-model="newTransaction.recurringInterval" value="yearly" />Jährlich</label>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="showAddModal = false">Abbrechen</button>
-            <button class="btn-save" @click="addTransaction">Speichern</button>
+          <div class="d-flex align-items-center gap-2">
+            <span class="fw-bold" :class="tx.categoryType === 'Income' ? 'text-success' : 'text-danger'">
+              {{ tx.categoryType === 'Income' ? '+' : '-' }}€{{ Math.abs(tx.amount).toFixed(2) }}
+            </span>
+            <BButton size="sm" variant="outline-secondary" @click="showRecurringModal = false; openEditModal(tx)">✏️ Bearbeiten</BButton>
+            <BButton size="sm" variant="outline-warning" :disabled="stoppingRecurringId === tx.id" @click="stopRecurring(tx)">
+              {{ stoppingRecurringId === tx.id ? '…' : '⏹ Stoppen' }}
+            </BButton>
           </div>
         </div>
       </div>
+    </BModal>
 
-      <!-- Edit Transaction -->
-      <div v-if="showEditModal && editTransaction" class="modal-backdrop" @click.self="showEditModal = false">
-        <div class="modal-box">
-          <div class="modal-header">
-            <h2>{{ editingTemplate ? '🔁 Vorlage bearbeiten' : 'Transaktion bearbeiten' }}</h2>
-            <button class="modal-close" @click="showEditModal = false">✕</button>
-          </div>
-          <div class="modal-body">
-            <p v-if="editingTemplate" class="modal-hint">
-              Änderungen gelten für alle künftigen Buchungen. Einen einzelnen Monat
-              (z. B. geändertes Gehalt) bearbeitest du direkt in der Transaktionsliste.
-            </p>
-            <div class="type-toggle">
-              <button class="type-btn" :class="{ active: editTransaction.type === 'Expense' }" @click="editTransaction.type = 'Expense'">💸 Ausgabe</button>
-              <button class="type-btn" :class="{ active: editTransaction.type === 'Income' }" @click="editTransaction.type = 'Income'">💵 Einnahme</button>
-            </div>
-            <div class="form-group">
-              <label>Beschreibung</label>
-              <input v-model="editTransaction.title" class="form-input" />
-            </div>
-            <div class="form-row-2">
-              <div class="form-group">
-                <label>Betrag (€)</label>
-                <input v-model.number="editTransaction.amount" class="form-input" type="number" step="0.01" min="0" />
-              </div>
-              <div class="form-group">
-                <label>Datum</label>
-                <input v-model="editTransaction.date" class="form-input" type="date" />
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Kategorie</label>
-              <select v-model="editTransaction.categoryId" class="form-input">
-                <option v-for="cat in filteredCategoriesForEdit" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Notiz <span class="optional">optional</span></label>
-              <input v-model="editTransaction.note" class="form-input" type="text" placeholder="Kurze Anmerkung …" />
-            </div>
-            <div class="recurring-section">
-              <label v-if="!editingTemplate" class="recurring-toggle">
-                <span class="toggle-label">🔁 Wiederkehrend</span>
-                <div class="toggle-switch">
-                  <input type="checkbox" v-model="editTransaction.isRecurring" />
-                  <span class="toggle-slider"></span>
-                </div>
-              </label>
-              <span v-else class="toggle-label">🔁 Intervall</span>
-              <div v-if="editTransaction.isRecurring" class="interval-options" style="margin-top: 12px">
-                <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'weekly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="weekly" />Wöchentlich</label>
-                <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'monthly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="monthly" />Monatlich</label>
-                <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'quarterly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="quarterly" />Quartalsweise</label>
-                <label class="interval-opt" :class="{ active: editTransaction.recurringInterval === 'yearly' }"><input type="radio" v-model="editTransaction.recurringInterval" value="yearly" />Jährlich</label>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="showEditModal = false">Abbrechen</button>
-            <button class="btn-save" @click="saveEdit" :disabled="savingEdit">{{ savingEdit ? 'Speichert…' : 'Speichern' }}</button>
-          </div>
-        </div>
+    <!-- Budget Limit -->
+    <BModal v-model="showBudgetLimitModal" title="✏️ Budget-Limits anpassen">
+      <p class="text-secondary small">Monatliches Limit pro Ausgaben-Kategorie. Leer lassen = automatisches Limit. Gilt für alle Geräte.</p>
+      <div v-for="cat in expenseCategories" :key="'bl-' + cat.id" class="mb-3">
+        <label class="form-label small fw-semibold">{{ cat.icon }} {{ cat.name }}</label>
+        <BInputGroup prepend="€">
+          <BFormInput v-model.number="editingLimits[cat.id]" type="number" min="0" step="10" placeholder="automatisch" />
+        </BInputGroup>
       </div>
+      <div v-if="expenseCategories.length === 0" class="text-center text-secondary py-3">Keine Ausgaben-Kategorien.</div>
+      <template #footer>
+        <BButton variant="outline-secondary" class="me-auto" @click="resetBudgetLimits">↺ Zurücksetzen</BButton>
+        <BButton variant="outline-secondary" @click="showBudgetLimitModal = false">Abbrechen</BButton>
+        <BButton variant="primary" :disabled="savingLimits" @click="saveBudgetLimits">{{ savingLimits ? 'Speichert…' : 'Speichern' }}</BButton>
+      </template>
+    </BModal>
 
-      <!-- Recurring Overview Modal -->
-      <div v-if="showRecurringModal" class="modal-backdrop" @click.self="showRecurringModal = false">
-        <div class="modal-box modal-box-wide">
-          <div class="modal-header">
-            <h2>🔁 Wiederkehrende Transaktionen</h2>
-            <button class="modal-close" @click="showRecurringModal = false">✕</button>
-          </div>
-          <div class="modal-body" style="padding: 0">
-            <div v-if="recurringTransactions.length === 0" class="empty-state">Keine wiederkehrenden Transaktionen.</div>
-            <div v-else class="recurring-list">
-              <div v-for="tx in recurringTransactions" :key="'rm-' + tx.id" class="recurring-list-item">
-                <div class="recurring-item-left">
-                  <span class="recurring-interval-icon">{{ intervalIcon(tx.recurringInterval) }}</span>
-                  <div class="recurring-item-info">
-                    <span class="recurring-item-title">{{ tx.title }}</span>
-                    <div class="recurring-item-meta">
-                      <span class="interval-chip-sm">{{ intervalLabel(tx.recurringInterval) }}</span>
-                      <span class="cat-chip" :style="{
-                        background: getCatColor(tx.categoryName, tx.categoryType) + '22',
-                        color: getCatColor(tx.categoryName, tx.categoryType),
-                      }">{{ tx.categoryName }}</span>
-                      <span v-if="tx.nextDueDate" class="next-due-sm">Nächste: {{ formatDate(tx.nextDueDate) }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="recurring-item-right">
-                  <span class="recurring-amount" :class="tx.categoryType === 'Income' ? 'amount-pos' : 'amount-neg'">
-                    {{ tx.categoryType === 'Income' ? '+' : '-' }}€{{ Math.abs(tx.amount).toFixed(2) }}
-                  </span>
-                  <button class="btn-stop-recurring" @click="showRecurringModal = false; openEditModal(tx)">
-                    ✏️ Bearbeiten
-                  </button>
-                  <button class="btn-stop-recurring" @click="stopRecurring(tx)" :disabled="stoppingRecurringId === tx.id">
-                    {{ stoppingRecurringId === tx.id ? '…' : '⏹ Stoppen' }}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="showRecurringModal = false">Schließen</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Budget Limit Modal -->
-      <div v-if="showBudgetLimitModal" class="modal-backdrop" @click.self="showBudgetLimitModal = false">
-        <div class="modal-box">
-          <div class="modal-header">
-            <h2>✏️ Budget-Limits anpassen</h2>
-            <button class="modal-close" @click="showBudgetLimitModal = false">✕</button>
-          </div>
-          <div class="modal-body">
-            <p class="modal-hint">Monatliches Limit pro Ausgaben-Kategorie. Leer lassen = automatisches Limit. Gilt für alle Geräte.</p>
-            <div v-for="cat in expenseCategories" :key="'bl-' + cat.id" class="form-group">
-              <label>{{ cat.icon }} {{ cat.name }}</label>
-              <div class="limit-input-row">
-                <span class="limit-euro">€</span>
-                <input v-model.number="editingLimits[cat.id]" class="form-input" type="number" min="0" step="10" placeholder="automatisch" />
-              </div>
-            </div>
-            <div v-if="expenseCategories.length === 0" class="empty-state">Keine Ausgaben-Kategorien.</div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="resetBudgetLimits" style="margin-right: auto">↺ Zurücksetzen</button>
-            <button class="btn-cancel" @click="showBudgetLimitModal = false">Abbrechen</button>
-            <button class="btn-save" @click="saveBudgetLimits" :disabled="savingLimits">{{ savingLimits ? 'Speichert…' : 'Speichern' }}</button>
-          </div>
-        </div>
-      </div>
-
-    </Teleport>
-  </div>
+  </BContainer>
 </template>
 
 <style scoped>
-.budget-page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 20px; }
-
-/* Header */
-.page-header { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
-.page-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.page-title { font-size: 30px; font-weight: 800; color: var(--text); letter-spacing: -1px; }
-.title-accent { color: var(--primary); }
-.page-subtitle { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
-.badge-count { display: inline-flex; align-items: center; justify-content: center; background: var(--primary); color: white; border-radius: 99px; font-size: 11px; font-weight: 700; padding: 1px 6px; margin-left: 4px; }
-
-/* Month nav */
-.month-nav { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
-.month-label { color: var(--text); font-size: 14px; font-weight: 600; min-width: 130px; text-align: center; }
-.btn-month { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-size: 16px; padding: 2px 10px; cursor: pointer; transition: background 0.15s; }
-.btn-month:hover:not(:disabled) { background: var(--surface2); }
-.btn-month:disabled { opacity: 0.4; cursor: default; }
-
-/* Transaction filter + pagination */
-.tx-filter-bar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-.tx-search { flex: 1; min-width: 180px; }
-.tx-type-filter { width: auto; }
-.tx-pagination { display: flex; align-items: center; justify-content: center; gap: 14px; padding-top: 14px; }
-.tx-page-label { font-size: 12px; color: var(--text-muted); }
-.btn-page { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 12px; cursor: pointer; transition: background 0.15s; }
-.btn-page:hover:not(:disabled) { background: var(--border); }
-.btn-page:disabled { opacity: 0.4; cursor: default; }
-
-/* Alerts */
-.alert { padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; }
-.alert-error { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
-.alert-success { background: rgba(16,185,129,0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2); }
-
-/* Buttons */
-.btn-add, .btn-save, .btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.15s, transform 0.1s; white-space: nowrap; }
-.btn-add, .btn-save { background: var(--primary); color: white; border: none; }
-.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-.btn-add:hover, .btn-save:hover, .btn-secondary:hover { opacity: 0.88; transform: translateY(-1px); }
-.btn-save:disabled { opacity: 0.6; transform: none; cursor: default; }
-
-.btn-delete { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 4px 6px; border-radius: 6px; transition: background 0.15s, color 0.15s; }
-.btn-delete:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
-.btn-delete:disabled { opacity: 0.5; cursor: default; }
-
-.btn-edit { background: none; border: none; cursor: pointer; font-size: 13px; padding: 4px 6px; border-radius: 6px; transition: background 0.15s; color: var(--text-muted); }
-.btn-edit:hover { background: rgba(99,102,241,0.1); }
-
-.btn-edit-limits { padding: 5px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text); transition: background 0.15s; }
-.btn-edit-limits:hover { background: var(--border); }
-
-.btn-recurring-manage { padding: 5px 12px; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.18); border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--primary); transition: background 0.15s, border-color 0.15s; }
-.btn-recurring-manage:hover { background: rgba(99,102,241,0.16); border-color: rgba(99,102,241,0.28); }
-
-.btn-stop-recurring { background: none; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 7px; transition: all 0.15s; white-space: nowrap; font-weight: 600; }
-.btn-stop-recurring:hover { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: #f59e0b; }
-.btn-stop-recurring:disabled { opacity: 0.5; cursor: default; }
-
-.btn-stop-inline { background: none; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 4px 6px; border-radius: 6px; transition: all 0.15s; }
-.btn-stop-inline:hover { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: #f59e0b; }
-.btn-stop-inline:disabled { opacity: 0.5; cursor: default; }
-/* Stats */
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-@media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 540px) { .stats-grid { grid-template-columns: 1fr; } }
-
-.stat-card { position: relative; overflow: hidden; background: var(--surface); border-radius: var(--radius); padding: 20px 18px; display: flex; align-items: center; gap: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--border); transition: transform 0.2s ease; }
-.stat-card:hover { transform: translateY(-2px); }
-.stat-icon { font-size: 30px; z-index: 1; }
-.stat-info { display: flex; flex-direction: column; gap: 2px; z-index: 1; min-width: 0; }
-.stat-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-.stat-value { font-size: 20px; font-weight: 800; color: var(--text); letter-spacing: -0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stat-trend { font-size: 11px; font-weight: 500; }
-.trend-up { color: #10b981; }
-.trend-down { color: #ef4444; }
-.stat-bg-shape { position: absolute; right: -20px; top: -20px; width: 90px; height: 90px; border-radius: 50%; opacity: 0.07; }
-.stat-income .stat-bg-shape { background: #10b981; }
-.stat-expenses .stat-bg-shape { background: #ef4444; }
-.stat-balance .stat-bg-shape { background: #6366f1; }
-.stat-savings .stat-bg-shape { background: #f59e0b; }
-
-/* Charts */
-.charts-row { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
-@media (max-width: 780px) { .charts-row { grid-template-columns: 1fr; } }
-
-.chart-card, .budget-limits-card, .transactions-card, .management-card { background: var(--surface); border-radius: var(--radius); padding: 22px; box-shadow: var(--card-shadow); border: 1px solid var(--border); }
-.chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 8px; }
-.chart-title { font-size: 15px; font-weight: 700; color: var(--text); }
-.chart-badge { font-size: 12px; padding: 3px 10px; background: rgba(99,102,241,0.1); color: var(--primary); border-radius: 20px; font-weight: 600; }
-.chart-badge.warning { background: rgba(239,68,68,0.1); color: #ef4444; }
-
-/* Donut */
-.donut-wrapper { position: relative; display: flex; justify-content: center; margin-bottom: 14px; }
-.donut-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
-.donut-total { display: block; font-size: 15px; font-weight: 800; color: var(--text); }
-.donut-label { font-size: 11px; color: var(--text-muted); }
-
-/* Legend */
-.legend { display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
-.legend-section-header { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.legend-section-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-.income-dot { background: #10b981; }
-.expense-dot { background: #6366f1; }
-.legend-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
-.legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; padding-left: 4px; }
-.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.legend-name { flex: 1; color: var(--text); }
-.legend-val { font-weight: 600; }
-.legend-empty { font-size: 12px; color: var(--text-muted); font-style: italic; padding-left: 4px; }
-.chart-legend-inline { display: flex; gap: 14px; font-size: 12px; color: var(--text-muted); }
-.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
-.dot-income { background: #10b981; }
-.dot-expense { background: #ef4444; }
-.chart-bar-card canvas { width: 100%; }
-
-/* Budget limits */
-.progress-list { display: flex; flex-direction: column; gap: 14px; }
-.progress-item { display: flex; flex-direction: column; gap: 5px; }
-.progress-header { display: flex; justify-content: space-between; align-items: center; }
-.progress-name, .progress-nums { font-size: 13px; color: var(--text); }
-.progress-track { height: 7px; background: var(--border); border-radius: 99px; overflow: hidden; }
-.progress-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
-.progress-pct { font-size: 11px; color: var(--text-muted); align-self: flex-end; }
-.progress-pct.danger { color: #ef4444; font-weight: 600; }
-.limit-auto-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; cursor: help; }
-.limit-input-row { display: flex; align-items: center; gap: 6px; }
-.limit-euro { font-size: 14px; font-weight: 600; color: var(--text-muted); flex-shrink: 0; }
-
-/* Quick-Add: Transaktion ohne Modal direkt in der Liste anlegen */
-.quick-add-bar {
-  display: grid;
-  grid-template-columns: auto minmax(140px, 1fr) 110px minmax(130px, 180px) auto;
-  grid-template-areas: "type title amount cat add";
-  gap: 8px;
-  align-items: center;
+/* Nur das, was Bootstrap nicht abdeckt: Donut-Overlay + Bar-Canvas-Breite. */
+.donut-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
   margin-bottom: 14px;
-  padding: 10px;
-  background: var(--surface2);
-  border: 1px dashed var(--border);
-  border-radius: 12px;
 }
-.quick-type { grid-area: type; padding: 3px; background: var(--surface); }
-.quick-type .type-btn { padding: 7px 10px; font-size: 15px; }
-.quick-title { grid-area: title; }
-.quick-amount { grid-area: amount; }
-.quick-cat { grid-area: cat; }
-.quick-submit { grid-area: add; }
-
-@media (max-width: 760px) {
-  .quick-add-bar {
-    grid-template-columns: auto 1fr;
-    grid-template-areas:
-      "type amount"
-      "title title"
-      "cat cat"
-      "add add";
-  }
-}
-
-/* Transaction table */
-.trans-table { display: flex; flex-direction: column; }
-.trans-row { display: grid; grid-template-columns: 100px 1fr 130px 110px 60px; padding: 11px 8px; border-bottom: 1px solid var(--border); align-items: center; font-size: 13px; gap: 4px; }
-.trans-row:last-child { border-bottom: none; }
-.trans-row:hover:not(.header-row) { background: var(--surface2); border-radius: 8px; }
-.header-row { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid var(--border); }
-.trans-date { color: var(--text-muted); }
-.trans-desc { color: var(--text); font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.text-right { text-align: right; }
-.trans-amount { text-align: right; font-weight: 700; }
-.trans-actions { display: flex; justify-content: flex-end; gap: 2px; }
-.amount-pos { color: #10b981; }
-.amount-neg { color: #ef4444; }
-.recurring-inline-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--primary); background: rgba(99,102,241,0.1); padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
-
-/* Chips */
-.cat-chip { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.small-chip { background: var(--surface2); color: var(--text-muted); }
-.chip-income { background: rgba(16,185,129,0.12); color: #10b981; }
-.chip-expense { background: rgba(239,68,68,0.12); color: #ef4444; }
-.interval-chip-sm { font-size: 11px; color: var(--primary); font-weight: 600; background: rgba(99,102,241,0.1); padding: 1px 6px; border-radius: 20px; }
-.next-due-sm { font-size: 11px; color: var(--text-muted); }
-.empty-state { padding: 24px; text-align: center; color: var(--text-muted); font-size: 14px; }
-
-/* Recurring list (in modal) */
-.recurring-list { display: flex; flex-direction: column; }
-.recurring-list-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; border-bottom: 1px solid var(--border); transition: background 0.15s; }
-.recurring-list-item:last-child { border-bottom: none; }
-.recurring-list-item:hover { background: var(--surface2); }
-.recurring-item-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
-.recurring-interval-icon { font-size: 22px; flex-shrink: 0; }
-.recurring-item-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.recurring-item-title { font-size: 14px; font-weight: 600; color: var(--text); }
-.recurring-item-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.recurring-item-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.recurring-amount { font-size: 15px; font-weight: 700; }
-
-/* Management */
-.management-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 900px) { .management-grid { grid-template-columns: 1fr; } }
-.management-form, .category-list { display: flex; flex-direction: column; gap: 14px; }
-.category-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); font-size: 13px; }
-.category-row-actions { display: flex; align-items: center; gap: 8px; }
-.category-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Form */
-.form-group { display: flex; flex-direction: column; gap: 5px; }
-.form-group label { font-size: 12px; font-weight: 600; color: var(--text); }
-.optional { font-weight: 400; color: var(--text-muted); font-size: 11px; margin-left: 4px; }
-.form-input { padding: 9px 13px; border-radius: 9px; border: 1.5px solid var(--border); background: var(--surface2); color: var(--text); font-size: 14px; outline: none; transition: border-color 0.2s; width: 100%; box-sizing: border-box; }
-.form-input:focus { border-color: var(--primary); }
-.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-/* Modal */
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(4px); padding: 16px; }
-.modal-box { background: var(--surface); border-radius: var(--radius); width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 1px solid var(--border); animation: slideUp 0.22s ease; }
-.modal-box-wide { max-width: 600px; }
-@keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 1; }
-.modal-header h2 { font-size: 17px; font-weight: 700; color: var(--text); }
-.modal-close { background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text-muted); padding: 4px 8px; border-radius: 6px; transition: background 0.15s; }
-.modal-close:hover { background: var(--surface2); }
-.modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
-.modal-hint { font-size: 13px; color: var(--text-muted); margin: 0; }
-.modal-footer { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--surface); }
-.btn-cancel { padding: 9px 18px; background: none; border: 1.5px solid var(--border); color: var(--text); border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.15s; }
-.btn-cancel:hover { background: var(--surface2); }
-
-/* Type toggle */
-.type-toggle { display: flex; gap: 8px; background: var(--surface2); border-radius: 10px; padding: 4px; }
-.type-btn { flex: 1; padding: 8px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: var(--text-muted); transition: background 0.15s, color 0.15s; }
-.type-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
-
-/* Recurring section */
-.recurring-section { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface2); }
-.recurring-toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
-.toggle-label { font-size: 13px; font-weight: 600; color: var(--text); }
-.toggle-switch { position: relative; width: 40px; height: 22px; }
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
-.toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 22px; transition: background 0.2s; cursor: pointer; }
-.toggle-slider::before { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: transform 0.2s; }
-.toggle-switch input:checked + .toggle-slider { background: var(--primary); }
-.toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
-.interval-options { display: flex; gap: 6px; flex-wrap: wrap; }
-.interval-opt { flex: 1; min-width: 70px; display: flex; align-items: center; justify-content: center; padding: 7px 4px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; background: var(--surface); color: var(--text-muted); transition: all 0.15s; text-align: center; }
-.interval-opt input { display: none; }
-.interval-opt.active { border-color: var(--primary); color: var(--primary); background: rgba(99,102,241,0.08); }
-
-/* Responsive */
-@media (max-width: 760px) {
-  .budget-page { padding: 16px 12px; }
-
-  /* Transaktionen zweizeilig: oben Titel + Betrag, unten Datum/Kategorie + Aktionen */
-  .header-row { display: none; }
-  .trans-row {
-    grid-template-columns: auto 1fr auto;
-    grid-template-areas:
-      "desc desc amount"
-      "date cat actions";
-    row-gap: 8px;
-    padding: 12px 8px;
-  }
-  .trans-date { grid-area: date; font-size: 12px; align-self: center; }
-  .trans-desc { grid-area: desc; font-size: 14px; }
-  .trans-cat { grid-area: cat; align-self: center; }
-  .trans-amount { grid-area: amount; font-size: 15px; }
-  .trans-actions { grid-area: actions; }
-
-  /* Größere Touch-Ziele für Bearbeiten/Löschen/Stoppen */
-  .btn-edit, .btn-delete, .btn-stop-inline { font-size: 16px; padding: 8px 10px; }
-
-  .form-row-2 { grid-template-columns: 1fr; }
-  .interval-options { flex-direction: column; }
-  .recurring-list-item { flex-direction: column; align-items: flex-start; }
-  .recurring-item-right { width: 100%; justify-content: space-between; }
+.donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
 }
 </style>

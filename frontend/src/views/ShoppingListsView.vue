@@ -396,20 +396,20 @@ const syncStatusLabel = computed(() => {
 
   return 'Online'
 })
-const syncStatusClass = computed(() => {
+const syncStatusVariant = computed(() => {
   if (isSyncing.value) {
-    return 'sync-chip-syncing'
+    return 'info'
   }
 
   if (!isOnline.value) {
-    return pendingMutationCount.value > 0 ? 'sync-chip-pending' : 'sync-chip-offline'
+    return pendingMutationCount.value > 0 ? 'warning' : 'secondary'
   }
 
   if (pendingMutationCount.value > 0) {
-    return 'sync-chip-pending'
+    return 'warning'
   }
 
-  return 'sync-chip-online'
+  return 'success'
 })
 
 function isOfflineError(err: unknown) {
@@ -2324,446 +2324,354 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dashboard-page">
-    <div class="page-header">
+  <BContainer fluid="lg" class="py-4 d-flex flex-column gap-4">
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3">
       <div>
-        <h1 class="page-title">Einkaufsliste <span class="title-accent">Marktzettel</span></h1>
-        <p class="page-subtitle">Charmant wie ein echter Einkaufszettel, aber mit Preisen, Quellen und Inventar-Abgleich.</p>
+        <h1 class="h2 fw-bold mb-1">Einkaufsliste <span class="text-primary">Marktzettel</span></h1>
+        <p class="text-secondary mb-0">Charmant wie ein echter Einkaufszettel, aber mit Preisen, Quellen und Inventar-Abgleich.</p>
       </div>
-      <div class="header-actions">
-        <span :class="['sync-chip', syncStatusClass]">{{ syncStatusLabel }}</span>
-      </div>
+      <BBadge :variant="syncStatusVariant">{{ syncStatusLabel }}</BBadge>
     </div>
 
-    <div v-if="error" class="alert alert-error">{{ error }}</div>
-    <div v-if="success" class="alert alert-success">{{ success }}</div>
-    <div v-if="pendingMutationCount > 0" class="alert">
-      {{ pendingMutationLabel }}
-    </div>
-    <div v-if="offlineSnapshotAt" class="alert">
-      Offline-Snapshot von {{ offlineSnapshotLabel }}
-    </div>
-    <div v-if="loading" class="alert">Lade Einkaufslisten…</div>
+    <BAlert :model-value="!!error" variant="danger">{{ error }}</BAlert>
+    <BAlert :model-value="!!success" variant="success">{{ success }}</BAlert>
+    <BAlert :model-value="pendingMutationCount > 0" variant="info">{{ pendingMutationLabel }}</BAlert>
+    <BAlert :model-value="!!offlineSnapshotAt" variant="info">Offline-Snapshot von {{ offlineSnapshotLabel }}</BAlert>
+    <BAlert :model-value="loading" variant="info">Lade Einkaufslisten…</BAlert>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon">🧾</div>
-        <div class="stat-info">
-          <span class="stat-label">Listen</span>
-          <span class="stat-value">{{ shoppingLists.length }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">🛍️</div>
-        <div class="stat-info">
-          <span class="stat-label">Ausgewählte Liste</span>
-          <span class="stat-value">{{ selectedList?.items.length ?? 0 }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">💶</div>
-        <div class="stat-info">
-          <span class="stat-label">Geschätzt</span>
-          <span class="stat-value">{{ formatMoney(selectedListTotals.estimated) }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon">🧮</div>
-        <div class="stat-info">
-          <span class="stat-label">Tatsächlich</span>
-          <span class="stat-value">{{ formatMoney(selectedListTotals.actual) }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-    </div>
+    <BRow class="g-3">
+      <BCol md="3" sm="6">
+        <BCard><div class="text-secondary text-uppercase small">🧾 Listen</div><div class="fs-4 fw-bold">{{ shoppingLists.length }}</div></BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard><div class="text-secondary text-uppercase small">🛍️ Ausgewählte Liste</div><div class="fs-4 fw-bold">{{ selectedList?.items.length ?? 0 }}</div></BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard><div class="text-secondary text-uppercase small">💶 Geschätzt</div><div class="fs-4 fw-bold">{{ formatMoney(selectedListTotals.estimated) }}</div></BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard><div class="text-secondary text-uppercase small">🧮 Tatsächlich</div><div class="fs-4 fw-bold">{{ formatMoney(selectedListTotals.actual) }}</div></BCard>
+      </BCol>
+    </BRow>
 
-    <div class="content-grid">
-      <div class="stack">
-        <div class="form-card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Neue Einkaufsliste</h2>
-              <p class="card-copy">Lege eine neue Liste an und öffne sie direkt für Artikel und Preisvorschläge.</p>
-            </div>
-          </div>
+    <BRow class="g-4">
+      <BCol lg="5">
+        <div class="d-flex flex-column gap-4">
+          <BCard title="Neue Einkaufsliste">
+            <p class="text-secondary small">Lege eine neue Liste an und öffne sie direkt für Artikel und Preisvorschläge.</p>
+            <BForm @submit.prevent="createList">
+              <BFormInput v-model="newList.name" type="text" placeholder="Name der Liste" required class="mb-3" />
+              <BButton type="submit" variant="primary">Liste anlegen</BButton>
+            </BForm>
+          </BCard>
 
-          <form @submit.prevent="createList">
-            <div class="form-grid full">
-              <input v-model="newList.name" type="text" placeholder="Name der Liste" required />
-            </div>
-            <div class="form-actions">
-              <button class="btn-add" type="submit">Liste anlegen</button>
-            </div>
-          </form>
-        </div>
+          <BCard title="Listenübersicht">
+            <p class="text-secondary small">Eine Liste öffnen, um Artikel und Preisoptionen zu sehen.</p>
 
-        <div class="data-card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Listenübersicht</h2>
-              <p class="card-copy">Eine Liste öffnen, um Artikel und Preisoptionen zu sehen.</p>
-            </div>
-          </div>
-
-          <div v-if="shoppingLists.length > 0" class="list-cards">
-            <div
-              v-for="list in shoppingLists"
-              :key="list.id"
-              class="list-card"
-              :class="{ selected: selectedListId === list.id }"
-            >
-              <template v-if="editListId === list.id">
-                <div class="form-grid full">
-                  <input v-model="editList.name" type="text" />
-                </div>
-                <div class="actions">
-                  <button class="btn-save" @click="updateList(list.id)">Speichern</button>
-                  <button class="btn-secondary" @click="cancelEditList">Abbrechen</button>
-                </div>
-              </template>
-              <template v-else>
-                <div class="list-card-top clickable" @click="selectedListId = list.id">
-                  <div class="list-card-headline">
-                    <span class="list-card-name">{{ list.name }}</span>
-                    <span class="list-card-date">{{ new Date(list.createdAt).toLocaleDateString('de-AT') }}</span>
+            <div v-if="shoppingLists.length > 0" class="d-flex flex-column gap-3">
+              <BCard
+                v-for="list in shoppingLists"
+                :key="list.id"
+                class="bg-body-tertiary"
+                :class="{ 'border-primary': selectedListId === list.id }"
+              >
+                <template v-if="editListId === list.id">
+                  <BFormInput v-model="editList.name" type="text" class="mb-2" />
+                  <div class="d-flex gap-2 flex-wrap">
+                    <BButton size="sm" variant="primary" @click="updateList(list.id)">Speichern</BButton>
+                    <BButton size="sm" variant="outline-secondary" @click="cancelEditList">Abbrechen</BButton>
                   </div>
-                  <span class="badge badge-primary">{{ list.items.length }} Artikel</span>
-                </div>
+                </template>
+                <template v-else>
+                  <div class="d-flex justify-content-between align-items-start gap-2" role="button" @click="selectedListId = list.id">
+                    <div>
+                      <div class="fw-bold">{{ list.name }}</div>
+                      <div class="text-secondary small">{{ new Date(list.createdAt).toLocaleDateString('de-AT') }}</div>
+                    </div>
+                    <BBadge variant="primary">{{ list.items.length }} Artikel</BBadge>
+                  </div>
 
-                <div class="list-card-meta">
-                  <span class="meta-pill">
-                    Geschätzt
-                    <strong>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</strong>
-                  </span>
-                  <span class="meta-pill">
-                    Tatsächlich
-                    <strong>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</strong>
-                  </span>
-                </div>
+                  <div class="d-flex gap-2 flex-wrap my-2">
+                    <BBadge variant="light" text-color="dark" class="border">
+                      Geschätzt <strong>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.estimatedTotalPrice ?? 0), 0)) }}</strong>
+                    </BBadge>
+                    <BBadge variant="light" text-color="dark" class="border">
+                      Tatsächlich <strong>{{ formatMoney(list.items.reduce((sum, item) => sum + (item.actualTotalPrice ?? 0), 0)) }}</strong>
+                    </BBadge>
+                  </div>
 
-                <div class="complete-budget-box">
-                  <label class="checkbox-row">
-                    <input v-model="completeAsBudgetExpense[list.id]" type="checkbox" />
-                    <span>Als Budget-Ausgabe speichern</span>
-                  </label>
+                  <div class="border rounded p-2 mb-2">
+                    <BFormCheckbox v-model="completeAsBudgetExpense[list.id]">Als Budget-Ausgabe speichern</BFormCheckbox>
+                    <BFormSelect
+                      v-if="completeAsBudgetExpense[list.id]"
+                      v-model="selectedExpenseCategoryId[list.id]"
+                      class="mt-2"
+                    >
+                      <option value="">Budget-Kategorie wählen</option>
+                      <option v-for="category in expenseCategories" :key="category.id" :value="category.id">{{ category.name }}</option>
+                    </BFormSelect>
+                    <p
+                      v-if="completeAsBudgetExpense[list.id] && budgetHintByListId[list.id]"
+                      class="small mt-2 mb-0"
+                      :class="budgetHintByListId[list.id]!.over ? 'text-danger' : 'text-secondary'"
+                    >
+                      {{ budgetHintByListId[list.id]!.text }}
+                    </p>
+                  </div>
 
-                  <select
-                    v-if="completeAsBudgetExpense[list.id]"
-                    v-model="selectedExpenseCategoryId[list.id]"
-                    class="budget-category-select"
-                  >
-                    <option value="">Budget-Kategorie wählen</option>
-                    <option v-for="category in expenseCategories" :key="category.id" :value="category.id">
-                      {{ category.name }}
-                    </option>
-                  </select>
-
-                  <p
-                    v-if="completeAsBudgetExpense[list.id] && budgetHintByListId[list.id]"
-                    class="budget-hint"
-                    :class="{ 'budget-hint-over': budgetHintByListId[list.id]!.over }"
-                  >
-                    {{ budgetHintByListId[list.id]!.text }}
-                  </p>
-                </div>
-
-                <div class="actions list-card-actions">
-                  <button class="btn-add" @click="selectedListId = list.id">Öffnen</button>
-                  <button
-                    class="btn-secondary"
-                    @click="startReceiptScan(list.id)"
-                    :disabled="receiptScanning"
-                  >
-                    {{ receiptScanning && receiptListId === list.id ? '⏳ Scanne…' : '📷 Bon scannen' }}
-                  </button>
-                  <button class="btn-secondary" @click="startEditList(list)">Bearbeiten</button>
-                  <button class="btn-secondary" @click="completeShoppingList(list.id)">Abschließen</button>
-                  <button class="btn-danger" @click="deleteList(list.id)">Löschen</button>
-                </div>
-              </template>
+                  <div class="d-flex gap-2 flex-wrap">
+                    <BButton size="sm" variant="primary" @click="selectedListId = list.id">Öffnen</BButton>
+                    <BButton size="sm" variant="outline-secondary" :disabled="receiptScanning" @click="startReceiptScan(list.id)">
+                      {{ receiptScanning && receiptListId === list.id ? '⏳ Scanne…' : '📷 Bon scannen' }}
+                    </BButton>
+                    <BButton size="sm" variant="outline-secondary" @click="startEditList(list)">Bearbeiten</BButton>
+                    <BButton size="sm" variant="outline-secondary" @click="completeShoppingList(list.id)">Abschließen</BButton>
+                    <BButton size="sm" variant="outline-danger" @click="deleteList(list.id)">Löschen</BButton>
+                  </div>
+                </template>
+              </BCard>
             </div>
-          </div>
 
-          <div v-else class="empty-state">Noch keine Einkaufslisten vorhanden.</div>
-        </div>
+            <p v-else class="text-secondary mb-0">Noch keine Einkaufslisten vorhanden.</p>
+          </BCard>
 
-        <div v-if="selectedList" class="form-card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Artikel zu „{{ selectedList.name }}“ hinzufügen</h2>
-              <p class="card-copy">Die Liste bleibt charmant manuell, bekommt aber automatisch Inventar- und Preisdaten dazu.</p>
-            </div>
-          </div>
+          <BCard v-if="selectedList" :title="`Artikel zu „${selectedList.name}“ hinzufügen`">
+            <p class="text-secondary small">Die Liste bleibt charmant manuell, bekommt aber automatisch Inventar- und Preisdaten dazu.</p>
 
-          <form @submit.prevent="createItem">
-            <div class="form-grid">
-              <select v-model="newItem.catalogItemId" @change="applyCatalogSelection(newItem.catalogItemId, newItem)">
+            <BForm @submit.prevent="createItem">
+              <BFormSelect v-model="newItem.catalogItemId" class="mb-2" @change="applyCatalogSelection(newItem.catalogItemId, newItem)">
                 <option value="">Katalogartikel optional wählen</option>
-                <option v-for="catalogItem in catalogItems" :key="catalogItem.id" :value="catalogItem.id">
-                  {{ catalogItem.name }}
-                </option>
-              </select>
+                <option v-for="catalogItem in catalogItems" :key="catalogItem.id" :value="catalogItem.id">{{ catalogItem.name }}</option>
+              </BFormSelect>
               <input
                 v-model="newItem.name"
                 list="shopping-catalog-name-suggestions"
                 type="text"
+                class="form-control mb-2"
                 placeholder="Name"
                 required
                 @input="applyCatalogNameSuggestion"
               />
-              <input v-model="newItem.requiredQuantity" type="number" min="0" step="0.01" placeholder="Benötigt" required />
-              <input v-model="newItem.unit" type="text" placeholder="Einheit" required />
-            </div>
-            <datalist id="shopping-catalog-name-suggestions">
-              <option
-                v-for="catalogItem in catalogNameSuggestions"
-                :key="catalogItem.id"
-                :value="catalogItem.name"
-                :label="`${catalogItem.name} · ${catalogItem.defaultUnit}`"
-              />
-            </datalist>
-            <div v-if="selectedCatalogEstimate" class="catalog-price-hint">
-              <span>Vorschlag aus Katalog:</span>
-              <strong>{{ selectedCatalogEstimate.storeName }}</strong>
-              <span>· {{ formatMoney(selectedCatalogEstimate.estimatedTotalPrice) }}</span>
-            </div>
-            <div class="form-actions">
-              <button class="btn-add" type="submit">Artikel hinzufügen</button>
-            </div>
-          </form>
-        </div>
+              <datalist id="shopping-catalog-name-suggestions">
+                <option
+                  v-for="catalogItem in catalogNameSuggestions"
+                  :key="catalogItem.id"
+                  :value="catalogItem.name"
+                  :label="`${catalogItem.name} · ${catalogItem.defaultUnit}`"
+                />
+              </datalist>
+              <BRow class="g-2 mb-2">
+                <BCol><BFormInput v-model="newItem.requiredQuantity" type="number" min="0" step="0.01" placeholder="Benötigt" required /></BCol>
+                <BCol><BFormInput v-model="newItem.unit" type="text" placeholder="Einheit" required /></BCol>
+              </BRow>
+              <BAlert v-if="selectedCatalogEstimate" :model-value="true" variant="light" class="border py-2">
+                Vorschlag aus Katalog: <strong>{{ selectedCatalogEstimate.storeName }}</strong>
+                · {{ formatMoney(selectedCatalogEstimate.estimatedTotalPrice) }}
+              </BAlert>
+              <BButton type="submit" variant="primary">Artikel hinzufügen</BButton>
+            </BForm>
+          </BCard>
 
-        <div v-if="selectedList" class="sheet-card notebook-card">
-          <div class="sheet-header">
-            <div>
-              <h2 class="card-title">Notizblock</h2>
-              <p class="card-copy">Eine Zeile = ein Artikel. Tippen oder auf dem iPad mit Apple Pencil schreiben. Häkchen zum Abhaken; leere Zeile + Entfernen löscht den Artikel.</p>
-            </div>
-          </div>
+          <BCard v-if="selectedList" title="Notizblock">
+            <p class="text-secondary small">Eine Zeile = ein Artikel. Tippen oder auf dem iPad mit Apple Pencil schreiben. Häkchen zum Abhaken; leere Zeile + Entfernen löscht den Artikel.</p>
 
-          <p class="match-mode-note">
-            Zuordnung: <strong>lokal im Browser</strong>
-            <button type="button" class="link-btn" @click="toggleMatchingMode">
-              {{ matchingMode === 'client' ? 'auf KI umstellen' : 'auf lokal zurück' }}
-            </button>
-            <span v-if="matchingMode === 'llm'"> · KI-Zuordnung ist vorbereitet, aber noch nicht aktiv – es wird weiter lokal zugeordnet.</span>
-          </p>
+            <p class="text-secondary small">
+              Zuordnung: <strong>lokal im Browser</strong>
+              <BButton variant="link" size="sm" class="p-0 align-baseline" @click="toggleMatchingMode">
+                {{ matchingMode === 'client' ? 'auf KI umstellen' : 'auf lokal zurück' }}
+              </BButton>
+              <span v-if="matchingMode === 'llm'"> · KI-Zuordnung ist vorbereitet, aber noch nicht aktiv – es wird weiter lokal zugeordnet.</span>
+            </p>
 
-          <div class="notebook-list">
-            <div
-              v-for="item in selectedList.items"
-              :key="item.id"
-              class="notebook-row"
-              :class="{ checked: item.isChecked }"
-            >
-              <label class="grocery-check">
-                <input :checked="item.isChecked" type="checkbox" @change="toggleItem(item)" />
-                <span class="grocery-check-mark"></span>
-              </label>
-              <input
-                class="notebook-input"
-                :value="item.name"
-                type="text"
-                enterkeyhint="next"
-                @keydown.enter.prevent="commitItemName(item, ($event.target as HTMLInputElement).value)"
-                @blur="commitItemName(item, ($event.target as HTMLInputElement).value)"
-                @keydown.delete="onNotebookBackspace(item, $event)"
-              />
-              <span class="notebook-amount">{{ item.quantity }} {{ item.unit }}</span>
-              <span v-if="item.catalogItemName" class="notebook-badge">{{ item.catalogItemName }}</span>
-              <span v-else class="notebook-badge notebook-badge-new">neu</span>
-            </div>
-
-            <div class="notebook-row notebook-row-new">
-              <span class="notebook-bullet">+</span>
-              <input
-                class="notebook-input"
-                v-model="newLineText"
-                type="text"
-                placeholder="Artikel schreiben …"
-                enterkeyhint="done"
-                @keydown.enter.prevent="commitNewLine"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="selectedList" class="sheet-card grocery-sheet">
-        <div class="sheet-header">
-          <div>
-            <h2 class="card-title">„{{ selectedList.name }}“</h2>
-            <p class="card-copy">Bedarf, Inventar-Abzug und Preisoptionen werden automatisch gerechnet. Den echten Einkauf pflegst du hier mit Charme nach.</p>
-          </div>
-        </div>
-
-        <div class="totals-strip">
-          <div class="note-pill"><span>Geschätzt</span><strong>{{ formatMoney(selectedListTotals.estimated) }}</strong></div>
-          <div class="note-pill"><span>Tatsächlich</span><strong>{{ formatMoney(selectedListTotals.actual) }}</strong></div>
-        </div>
-
-        <div v-if="bestCompleteStoreSummary" class="catalog-price-hint">
-          <span>Günstigster vollständiger Händler:</span>
-          <strong>{{ bestCompleteStoreSummary.storeName }}</strong>
-          <span>· {{ formatMoney(bestCompleteStoreSummary.totalEstimatedPrice) }}</span>
-        </div>
-
-        <div class="store-compare" v-if="storeSummaries.length > 0">
-          <div class="card-header">
-            <h3 class="card-title">Händlervergleich</h3>
-          </div>
-          <div class="compact-list">
-            <div v-for="summary in storeSummaries" :key="summary.storeName" class="compact-item">
-              <div class="card-header" style="margin-bottom:8px;">
-                <strong>{{ summary.storeName }}</strong>
-                <span :class="['badge', summary.isBestOption ? 'badge-success' : summary.isComplete ? 'badge-primary' : 'badge-warning']">
-                  {{ summary.isBestOption ? 'Beste Option' : summary.isComplete ? 'vollständig' : 'teilweise' }}
-                </span>
+            <div class="d-flex flex-column gap-2">
+              <div
+                v-for="item in selectedList.items"
+                :key="item.id"
+                class="d-flex align-items-center gap-2 border-bottom pb-2"
+                :class="{ checked: item.isChecked }"
+              >
+                <BFormCheckbox :model-value="item.isChecked" @change="toggleItem(item)" />
+                <input
+                  class="form-control form-control-sm flex-grow-1"
+                  :value="item.name"
+                  type="text"
+                  enterkeyhint="next"
+                  @keydown.enter.prevent="commitItemName(item, ($event.target as HTMLInputElement).value)"
+                  @blur="commitItemName(item, ($event.target as HTMLInputElement).value)"
+                  @keydown.delete="onNotebookBackspace(item, $event)"
+                />
+                <span class="text-secondary small text-nowrap">{{ item.quantity }} {{ item.unit }}</span>
+                <BBadge v-if="item.catalogItemName" variant="secondary">{{ item.catalogItemName }}</BBadge>
+                <BBadge v-else variant="warning">neu</BBadge>
               </div>
-              <div class="card-copy">{{ summary.coveredItemsCount }} / {{ summary.totalItemsCount }} Artikel · {{ formatMoney(summary.totalEstimatedPrice) }}</div>
+
+              <div class="d-flex align-items-center gap-2">
+                <span class="text-secondary">+</span>
+                <input
+                  class="form-control form-control-sm"
+                  v-model="newLineText"
+                  type="text"
+                  placeholder="Artikel schreiben …"
+                  enterkeyhint="done"
+                  @keydown.enter.prevent="commitNewLine"
+                />
+              </div>
             </div>
-          </div>
+          </BCard>
         </div>
+      </BCol>
 
-        <div class="grocery-list">
-          <div v-if="selectedList.items.length === 0" class="empty-state">Noch keine Artikel auf dieser Einkaufsliste.</div>
+      <BCol lg="7">
+        <BCard v-if="selectedList" :title="`„${selectedList.name}“`">
+          <p class="text-secondary small">Bedarf, Inventar-Abzug und Preisoptionen werden automatisch gerechnet. Den echten Einkauf pflegst du hier mit Charme nach.</p>
 
-          <div v-for="item in selectedList.items" :key="item.id" class="grocery-row" :class="{ checked: item.isChecked }">
-            <div class="grocery-main">
-              <div class="grocery-text">
-                <div class="grocery-headline">
-                  <div class="grocery-name">{{ item.name }}</div>
-                  <div class="grocery-amount">{{ item.quantity }} {{ item.unit }}</div>
+          <div class="d-flex gap-2 flex-wrap mb-3">
+            <BBadge variant="light" text-color="dark" class="border">Geschätzt <strong>{{ formatMoney(selectedListTotals.estimated) }}</strong></BBadge>
+            <BBadge variant="light" text-color="dark" class="border">Tatsächlich <strong>{{ formatMoney(selectedListTotals.actual) }}</strong></BBadge>
+          </div>
+
+          <BAlert v-if="bestCompleteStoreSummary" :model-value="true" variant="light" class="border py-2">
+            Günstigster vollständiger Händler: <strong>{{ bestCompleteStoreSummary.storeName }}</strong>
+            · {{ formatMoney(bestCompleteStoreSummary.totalEstimatedPrice) }}
+          </BAlert>
+
+          <div v-if="storeSummaries.length > 0" class="mb-3">
+            <h3 class="h6">Händlervergleich</h3>
+            <div class="d-flex flex-column gap-2">
+              <div v-for="summary in storeSummaries" :key="summary.storeName" class="border rounded p-2 bg-body-tertiary">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <strong>{{ summary.storeName }}</strong>
+                  <BBadge :variant="summary.isBestOption ? 'success' : summary.isComplete ? 'primary' : 'warning'">
+                    {{ summary.isBestOption ? 'Beste Option' : summary.isComplete ? 'vollständig' : 'teilweise' }}
+                  </BBadge>
                 </div>
+                <div class="text-secondary small">{{ summary.coveredItemsCount }} / {{ summary.totalItemsCount }} Artikel · {{ formatMoney(summary.totalEstimatedPrice) }}</div>
               </div>
-
-              <label class="grocery-check">
-                <input :checked="item.isChecked" type="checkbox" @change="toggleItem(item)" />
-                <span class="grocery-check-mark"></span>
-              </label>
             </div>
+          </div>
 
-            <div class="grocery-footer">
-              <div class="grocery-prices">
-                <span class="price-pill">
-                  Geschätzt <strong>{{ formatMoney(item.estimatedTotalPrice) }}</strong>
-                </span>
-                <span class="price-pill price-pill-actual">
-                  Echt <strong>{{ formatMoney(item.actualTotalPrice) }}</strong>
-                </span>
+          <p v-if="selectedList.items.length === 0" class="text-secondary">Noch keine Artikel auf dieser Einkaufsliste.</p>
+
+          <div class="d-flex flex-column gap-3">
+            <div v-for="item in selectedList.items" :key="item.id" class="border rounded p-3" :class="{ checked: item.isChecked }">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <div class="fw-semibold">{{ item.name }}</div>
+                  <div class="text-secondary small">{{ item.quantity }} {{ item.unit }}</div>
+                </div>
+                <BFormCheckbox :model-value="item.isChecked" @change="toggleItem(item)" />
               </div>
 
-              <div class="grocery-meta">
+              <div class="d-flex gap-2 flex-wrap mt-2">
+                <BBadge variant="light" text-color="dark" class="border">Geschätzt <strong>{{ formatMoney(item.estimatedTotalPrice) }}</strong></BBadge>
+                <BBadge variant="light" text-color="dark" class="border">Echt <strong>{{ formatMoney(item.actualTotalPrice) }}</strong></BBadge>
+              </div>
+
+              <div class="text-secondary small mt-2">
                 <span>{{ displaySource(item.sourceType) }}</span>
                 <span v-if="item.catalogItemName">· {{ item.catalogItemName }}</span>
                 <span>· Bedarf {{ item.requiredQuantity }} {{ item.unit }}</span>
                 <span>· Inventar {{ item.inventoryQuantityUsed }}</span>
               </div>
 
-              <div class="actions grocery-actions">
-                <button class="btn-secondary" @click="startEditItem(item)">Echten Einkauf pflegen</button>
-                <button class="btn-secondary" @click="togglePriceOptions(item.id)">
+              <div class="d-flex gap-2 flex-wrap mt-2">
+                <BButton size="sm" variant="outline-secondary" @click="startEditItem(item)">Echten Einkauf pflegen</BButton>
+                <BButton size="sm" variant="outline-secondary" @click="togglePriceOptions(item.id)">
                   {{ expandedPriceItemIds.has(item.id) ? '▾' : '▸' }} Preisoptionen ({{ item.priceOptions.length }})
-                </button>
-                <button class="btn-danger" @click="deleteItem(item.id)">Löschen</button>
-              </div>
-            </div>
-
-            <div v-if="editItemId === item.id" class="inline-editor">
-              <div class="form-grid">
-                <input v-model="editItem.purchasedQuantity" type="number" step="0.01" placeholder="Gekauft" />
-                <input v-model="editItem.actualTotalPrice" type="number" step="0.01" placeholder="Tatsächlicher Preis" />
-              </div>
-              <div class="form-actions">
-                <label class="checkbox-row"><input v-model="editItem.isChecked" type="checkbox" /> Bereits erledigt</label>
-                <button class="btn-save" @click="updateItem(item)">Speichern</button>
-                <button class="btn-secondary" @click="cancelEditItem">Abbrechen</button>
-              </div>
-            </div>
-
-            <div v-if="expandedPriceItemIds.has(item.id)" class="price-board">
-              <div class="card-header">
-                <h3 class="card-title" style="font-size:16px;">Preisoptionen</h3>
+                </BButton>
+                <BButton size="sm" variant="outline-danger" @click="deleteItem(item.id)">Löschen</BButton>
               </div>
 
-              <div v-if="item.priceOptions.length > 0" class="table-scroll">
-              <table class="paper-table">
-                <thead>
-                  <tr>
-                    <th>Händler</th>
-                    <th>Produkt</th>
-                    <th>Einzelpreis</th>
-                    <th>Gesamtpreis</th>
-                    <th>Verfügbar</th>
-                    <th>Link</th>
-                    <th>Aktionen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="priceOption in item.priceOptions" :key="priceOption.id">
-                    <template v-if="editPriceOptionId === priceOption.id">
-                      <td><input v-model="editPriceOption.storeName" type="text" /></td>
-                      <td><input v-model="editPriceOption.productName" type="text" /></td>
-                      <td><input v-model="editPriceOption.unitPrice" type="number" step="0.01" /></td>
-                      <td><input v-model="editPriceOption.totalPrice" type="number" step="0.01" /></td>
-                      <td><input v-model="editPriceOption.isAvailable" type="checkbox" /></td>
-                      <td><input v-model="editPriceOption.productUrl" type="text" /></td>
-                      <td class="actions">
-                        <button class="btn-save" @click="updatePriceOption(item, priceOption.id)">Speichern</button>
-                        <button class="btn-secondary" @click="cancelEditPriceOption">Abbrechen</button>
-                      </td>
-                    </template>
-                    <template v-else>
-                      <td>{{ priceOption.storeName }}</td>
-                      <td>{{ priceOption.productName }}</td>
-                      <td>{{ formatMoney(priceOption.unitPrice) }}</td>
-                      <td>{{ formatMoney(priceOption.totalPrice) }}</td>
-                      <td>{{ priceOption.isAvailable ? 'Ja' : 'Nein' }}</td>
-                      <td>
-                        <a v-if="priceOption.productUrl" :href="priceOption.productUrl" target="_blank" rel="noreferrer">öffnen</a>
-                        <span v-else>—</span>
-                      </td>
-                      <td class="actions">
-                        <button class="btn-secondary" @click="startEditPriceOption(priceOption)">Bearbeiten</button>
-                        <button class="btn-danger" @click="deletePriceOption(item, priceOption.id)">Löschen</button>
-                      </td>
-                    </template>
-                  </tr>
-                </tbody>
-              </table>
-              </div>
-
-              <div v-else class="empty-state">Noch keine Preisoptionen vorhanden.</div>
-
-              <div class="inline-editor" style="margin-top: 12px;">
-                <div class="card-copy" style="margin-bottom:8px;">Preisoption hinzufügen</div>
-                <div class="form-grid">
-                  <input v-model="getNewPriceOptionState(item).storeName" type="text" placeholder="Händler" />
-                  <input v-model="getNewPriceOptionState(item).productName" type="text" placeholder="Produktname" />
-                  <input v-model="getNewPriceOptionState(item).unitPrice" type="number" step="0.01" placeholder="Einzelpreis" />
-                  <input v-model="getNewPriceOptionState(item).totalPrice" type="number" step="0.01" placeholder="Gesamtpreis" />
-                  <input v-model="getNewPriceOptionState(item).productUrl" class="field-span-2" type="text" placeholder="Produkt-URL" />
+              <div v-if="editItemId === item.id" class="border rounded p-2 mt-2 bg-body-tertiary">
+                <BRow class="g-2 mb-2">
+                  <BCol><BFormInput v-model="editItem.purchasedQuantity" type="number" step="0.01" placeholder="Gekauft" /></BCol>
+                  <BCol><BFormInput v-model="editItem.actualTotalPrice" type="number" step="0.01" placeholder="Tatsächlicher Preis" /></BCol>
+                </BRow>
+                <div class="d-flex gap-3 align-items-center flex-wrap">
+                  <BFormCheckbox v-model="editItem.isChecked">Bereits erledigt</BFormCheckbox>
+                  <BButton size="sm" variant="primary" @click="updateItem(item)">Speichern</BButton>
+                  <BButton size="sm" variant="outline-secondary" @click="cancelEditItem">Abbrechen</BButton>
                 </div>
               </div>
-              <div class="form-actions">
-                <label class="checkbox-row">
-                  <input v-model="getNewPriceOptionState(item).isAvailable" type="checkbox" />
-                  Verfügbar
-                </label>
-                <button class="btn-add" @click="createPriceOption(item)">Preisoption speichern</button>
+
+              <div v-if="expandedPriceItemIds.has(item.id)" class="border rounded p-2 mt-2 bg-body-tertiary">
+                <h3 class="h6">Preisoptionen</h3>
+
+                <BTableSimple v-if="item.priceOptions.length > 0" small responsive class="align-middle">
+                  <thead>
+                    <tr>
+                      <th>Händler</th>
+                      <th>Produkt</th>
+                      <th>Einzelpreis</th>
+                      <th>Gesamtpreis</th>
+                      <th>Verfügbar</th>
+                      <th>Link</th>
+                      <th>Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="priceOption in item.priceOptions" :key="priceOption.id">
+                      <template v-if="editPriceOptionId === priceOption.id">
+                        <td><BFormInput v-model="editPriceOption.storeName" type="text" /></td>
+                        <td><BFormInput v-model="editPriceOption.productName" type="text" /></td>
+                        <td><BFormInput v-model="editPriceOption.unitPrice" type="number" step="0.01" /></td>
+                        <td><BFormInput v-model="editPriceOption.totalPrice" type="number" step="0.01" /></td>
+                        <td><BFormCheckbox v-model="editPriceOption.isAvailable" /></td>
+                        <td><BFormInput v-model="editPriceOption.productUrl" type="text" /></td>
+                        <td>
+                          <div class="d-flex gap-2">
+                            <BButton size="sm" variant="primary" @click="updatePriceOption(item, priceOption.id)">Speichern</BButton>
+                            <BButton size="sm" variant="outline-secondary" @click="cancelEditPriceOption">Abbrechen</BButton>
+                          </div>
+                        </td>
+                      </template>
+                      <template v-else>
+                        <td>{{ priceOption.storeName }}</td>
+                        <td>{{ priceOption.productName }}</td>
+                        <td>{{ formatMoney(priceOption.unitPrice) }}</td>
+                        <td>{{ formatMoney(priceOption.totalPrice) }}</td>
+                        <td>{{ priceOption.isAvailable ? 'Ja' : 'Nein' }}</td>
+                        <td>
+                          <a v-if="priceOption.productUrl" :href="priceOption.productUrl" target="_blank" rel="noreferrer">öffnen</a>
+                          <span v-else>—</span>
+                        </td>
+                        <td>
+                          <div class="d-flex gap-2">
+                            <BButton size="sm" variant="outline-secondary" @click="startEditPriceOption(priceOption)">Bearbeiten</BButton>
+                            <BButton size="sm" variant="outline-danger" @click="deletePriceOption(item, priceOption.id)">Löschen</BButton>
+                          </div>
+                        </td>
+                      </template>
+                    </tr>
+                  </tbody>
+                </BTableSimple>
+
+                <p v-else class="text-secondary small">Noch keine Preisoptionen vorhanden.</p>
+
+                <div class="border-top pt-2 mt-2">
+                  <div class="text-secondary small mb-2">Preisoption hinzufügen</div>
+                  <BRow class="g-2 mb-2">
+                    <BCol md="6"><BFormInput v-model="getNewPriceOptionState(item).storeName" type="text" placeholder="Händler" /></BCol>
+                    <BCol md="6"><BFormInput v-model="getNewPriceOptionState(item).productName" type="text" placeholder="Produktname" /></BCol>
+                    <BCol md="6"><BFormInput v-model="getNewPriceOptionState(item).unitPrice" type="number" step="0.01" placeholder="Einzelpreis" /></BCol>
+                    <BCol md="6"><BFormInput v-model="getNewPriceOptionState(item).totalPrice" type="number" step="0.01" placeholder="Gesamtpreis" /></BCol>
+                    <BCol cols="12"><BFormInput v-model="getNewPriceOptionState(item).productUrl" type="text" placeholder="Produkt-URL" /></BCol>
+                  </BRow>
+                  <div class="d-flex gap-3 align-items-center flex-wrap">
+                    <BFormCheckbox v-model="getNewPriceOptionState(item).isAvailable">Verfügbar</BFormCheckbox>
+                    <BButton size="sm" variant="primary" @click="createPriceOption(item)">Preisoption speichern</BButton>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </BCard>
 
-      <div v-else class="sheet-card">
-        <div class="empty-state">Wähle links eine Einkaufsliste aus, um den Einkaufszettel zu sehen.</div>
-      </div>
-    </div>
+        <BCard v-else>
+          <p class="text-secondary text-center mb-0">Wähle links eine Einkaufsliste aus, um den Einkaufszettel zu sehen.</p>
+        </BCard>
+      </BCol>
+    </BRow>
 
     <input
       ref="receiptFileInput"
@@ -2774,969 +2682,71 @@ onUnmounted(() => {
       @change="onReceiptFileSelected"
     />
 
-    <Teleport to="body">
-      <div
-        v-if="showReceiptModal && receiptResult"
-        class="receipt-modal-backdrop"
-        @click.self="closeReceiptModal"
-      >
-        <div class="receipt-modal">
-          <div class="receipt-modal-header">
-            <h2>📷 Beleg prüfen</h2>
-            <button class="receipt-modal-close" @click="closeReceiptModal">✕</button>
-          </div>
+    <BModal v-model="showReceiptModal" title="📷 Beleg prüfen" size="lg" hide-footer @hide="closeReceiptModal">
+      <div v-if="receiptResult">
+        <div class="d-flex gap-3 flex-wrap mb-3">
+          <span><strong>{{ receiptResult.storeName ?? 'Unbekanntes Geschäft' }}</strong></span>
+          <span v-if="receiptResult.purchaseDate">{{ receiptResult.purchaseDate }}</span>
+          <span v-if="receiptResult.totalAmount != null">Bon-Summe: {{ formatMoney(receiptResult.totalAmount) }}</span>
+        </div>
 
-          <div class="receipt-modal-meta">
-            <span><strong>{{ receiptResult.storeName ?? 'Unbekanntes Geschäft' }}</strong></span>
-            <span v-if="receiptResult.purchaseDate">{{ receiptResult.purchaseDate }}</span>
-            <span v-if="receiptResult.totalAmount != null">
-              Bon-Summe: {{ formatMoney(receiptResult.totalAmount) }}
-            </span>
-          </div>
+        <BTableSimple small responsive class="align-middle">
+          <thead>
+            <tr>
+              <th>Artikel laut Bon</th>
+              <th>Menge</th>
+              <th>Preis (€)</th>
+              <th>Zuordnung Einkaufsliste</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(line, index) in receiptResult.lines" :key="index">
+              <td><BFormInput v-model="line.name" type="text" /></td>
+              <td><BFormInput v-model.number="line.quantity" type="number" min="0" step="0.01" /></td>
+              <td><BFormInput v-model.number="line.totalPrice" type="number" min="0" step="0.01" /></td>
+              <td>
+                <BFormSelect v-model="line.shoppingItemId">
+                  <option :value="null">— nicht zuordnen —</option>
+                  <option v-for="item in receiptShoppingItems" :key="item.id" :value="item.id">{{ item.name }}</option>
+                </BFormSelect>
+              </td>
+              <td><BButton size="sm" variant="outline-danger" title="Position entfernen" @click="removeReceiptLine(index)">✕</BButton></td>
+            </tr>
+          </tbody>
+        </BTableSimple>
+        <p class="text-secondary small">Summe der Positionen: {{ formatMoney(receiptLinesTotal) }}</p>
 
-          <div class="table-scroll">
-          <table class="receipt-table">
-            <thead>
-              <tr>
-                <th>Artikel laut Bon</th>
-                <th>Menge</th>
-                <th>Preis (€)</th>
-                <th>Zuordnung Einkaufsliste</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(line, index) in receiptResult.lines" :key="index">
-                <td><input v-model="line.name" type="text" /></td>
-                <td><input v-model.number="line.quantity" type="number" min="0" step="0.01" class="receipt-num" /></td>
-                <td><input v-model.number="line.totalPrice" type="number" min="0" step="0.01" class="receipt-num" /></td>
-                <td>
-                  <select v-model="line.shoppingItemId">
-                    <option :value="null">— nicht zuordnen —</option>
-                    <option v-for="item in receiptShoppingItems" :key="item.id" :value="item.id">
-                      {{ item.name }}
-                    </option>
-                  </select>
-                </td>
-                <td>
-                  <button class="btn-danger" @click="removeReceiptLine(index)" title="Position entfernen">✕</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          </div>
-          <p class="receipt-sum">Summe der Positionen: {{ formatMoney(receiptLinesTotal) }}</p>
+        <div class="d-flex flex-column gap-2 border-top pt-3">
+          <BFormCheckbox v-model="receiptCompleteList">Liste abschließen (gekaufte Artikel ins Inventar übernehmen)</BFormCheckbox>
+          <BFormCheckbox v-if="receiptCompleteList" v-model="completeAsBudgetExpense[receiptListId]">Als Budget-Ausgabe buchen</BFormCheckbox>
+          <BFormSelect
+            v-if="receiptCompleteList && completeAsBudgetExpense[receiptListId]"
+            v-model="selectedExpenseCategoryId[receiptListId]"
+          >
+            <option value="">Budget-Kategorie wählen</option>
+            <option v-for="category in expenseCategories" :key="category.id" :value="category.id">{{ category.name }}</option>
+          </BFormSelect>
 
-          <div class="receipt-modal-footer">
-            <label class="checkbox-row">
-              <input v-model="receiptCompleteList" type="checkbox" />
-              <span>Liste abschließen (gekaufte Artikel ins Inventar übernehmen)</span>
-            </label>
-
-            <label v-if="receiptCompleteList" class="checkbox-row">
-              <input v-model="completeAsBudgetExpense[receiptListId]" type="checkbox" />
-              <span>Als Budget-Ausgabe buchen</span>
-            </label>
-
-            <select
-              v-if="receiptCompleteList && completeAsBudgetExpense[receiptListId]"
-              v-model="selectedExpenseCategoryId[receiptListId]"
-              class="budget-category-select"
-            >
-              <option value="">Budget-Kategorie wählen</option>
-              <option v-for="category in expenseCategories" :key="category.id" :value="category.id">
-                {{ category.name }}
-              </option>
-            </select>
-
-            <div class="receipt-actions">
-              <button class="btn-secondary" @click="closeReceiptModal" :disabled="receiptApplying">Abbrechen</button>
-              <button class="btn-add" @click="applyReceipt" :disabled="receiptApplying">
-                {{ receiptApplying ? 'Übernehme…' : 'Übernehmen' }}
-              </button>
-            </div>
+          <div class="d-flex gap-2 justify-content-end">
+            <BButton variant="outline-secondary" :disabled="receiptApplying" @click="closeReceiptModal">Abbrechen</BButton>
+            <BButton variant="primary" :disabled="receiptApplying" @click="applyReceipt">
+              {{ receiptApplying ? 'Übernehme…' : 'Übernehmen' }}
+            </BButton>
           </div>
         </div>
       </div>
-    </Teleport>
-  </div>
+    </BModal>
+  </BContainer>
 </template>
 
 <style scoped>
-.dashboard-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.page-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.page-title {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -1px;
-  margin: 0;
-}
-
-.title-accent { color: var(--primary); }
-
-.page-subtitle {
-  color: var(--text-muted);
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-.page-actions,
-.header-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.sync-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid transparent;
-}
-
-.sync-chip-online {
-  background: rgba(16,185,129,0.12);
-  color: #10b981;
-  border-color: rgba(16,185,129,0.22);
-}
-
-.sync-chip-offline {
-  background: rgba(107,114,128,0.12);
-  color: #6b7280;
-  border-color: rgba(107,114,128,0.2);
-}
-
-.sync-chip-pending {
-  background: rgba(245,158,11,0.12);
-  color: #d97706;
-  border-color: rgba(245,158,11,0.22);
-}
-
-.sync-chip-syncing {
-  background: rgba(59,130,246,0.12);
-  color: #2563eb;
-  border-color: rgba(59,130,246,0.22);
-}
-
-.alert {
-  padding: 14px 16px;
-  border-radius: var(--radius-sm, 12px);
-  font-size: 14px;
-  border: 1px solid transparent;
-}
-
-.alert-error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.2);
-}
-
-.alert-success {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border-color: rgba(16, 185, 129, 0.2);
-}
-
-.btn-add,
-.btn-save,
-.btn-secondary,
-.btn-danger,
-.btn-ghost,
-.small-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.12s ease;
-  text-decoration: none;
-}
-
-.btn-add,
-.btn-save {
-  background: var(--primary);
-  color: white;
-  border: none;
-}
-
-.btn-secondary,
-.small-button {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.btn-danger {
-  background: rgba(239,68,68,0.12);
-  color: #ef4444;
-  border: 1px solid rgba(239,68,68,0.18);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--text);
-  border: 1px dashed var(--border);
-}
-
-.btn-add:hover,
-.btn-save:hover,
-.btn-secondary:hover,
-.btn-danger:hover,
-.btn-ghost:hover,
-.small-button:hover {
-  opacity: 0.95;
-  transform: translateY(-1px);
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-@media (max-width: 900px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (max-width: 560px) {
-  .stats-grid { grid-template-columns: 1fr; }
-}
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 22px 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--border);
-}
-
-.stat-icon { font-size: 30px; z-index: 1; }
-.stat-info { display: flex; flex-direction: column; gap: 3px; z-index: 1; }
-.stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.stat-value {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.5px;
-}
-.stat-bg-shape {
-  position: absolute;
-  right: -20px;
-  top: -20px;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  opacity: 0.06;
-  background: var(--primary);
-}
-
-.content-grid {
-  display: grid;
-  grid-template-columns: minmax(300px, 380px) 1fr;
-  gap: 20px;
-}
-
-.content-grid.single {
-  grid-template-columns: 1fr;
-}
-
-@media (max-width: 980px) {
-  .content-grid { grid-template-columns: 1fr; }
-}
-
-.panel-card,
-.form-card,
-.data-card,
-.side-card,
-.week-card,
-.list-card,
-.sheet-card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--border);
-}
-
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.card-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--text);
-  margin: 0;
-}
-
-.card-copy,
-.hint,
-.muted,
-.empty-state {
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 12px;
-}
-
-.form-grid.full {
-  grid-template-columns: 1fr;
-}
-
-@media (max-width: 700px) {
-  .form-grid { grid-template-columns: 1fr; }
-}
-
-.field-span-2 { grid-column: span 2; }
-@media (max-width: 700px) { .field-span-2 { grid-column: span 1; } }
-
-.form-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-input,
-textarea,
-select,
-button {
-  font: inherit;
-}
-
-input,
-textarea,
-select {
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  padding: 12px 14px;
-  min-height: 46px;
-  box-sizing: border-box;
-}
-
-textarea {
-  min-height: 104px;
-  resize: vertical;
-}
-
-.checkbox-row,
-.inline-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text);
-  font-size: 14px;
-}
-
-.inline-checkbox input,
-.checkbox-row input {
-  width: auto;
-  min-height: auto;
-}
-
-.data-table,
-.nested-table,
-.paper-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table th,
-.data-table td,
-.nested-table th,
-.nested-table td,
-.paper-table th,
-.paper-table td {
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-  text-align: left;
-}
-
-.data-table thead th,
-.nested-table thead th,
-.paper-table thead th {
-  color: var(--text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.data-table tbody tr:hover,
-.paper-table tbody tr:hover {
-  background: rgba(99,102,241,0.04);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.status-chip,
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  width: fit-content;
-}
-
-.badge-primary,
-.status-chip.primary { background: rgba(99,102,241,0.12); color: var(--primary); }
-.badge-success,
-.status-chip.success { background: rgba(16,185,129,0.12); color: #10b981; }
-.badge-warning,
-.status-chip.warning { background: rgba(245,158,11,0.12); color: #d97706; }
-.badge-danger,
-.status-chip.danger { background: rgba(239,68,68,0.12); color: #ef4444; }
-
-.empty-state {
-  background: var(--surface2);
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  padding: 20px;
-  text-align: center;
-}
-
-.split-meta {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-@media (max-width: 780px) { .split-meta { grid-template-columns: 1fr; } }
-
-.meta-tile {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-
-.meta-label {
-  display: block;
-  font-size: 12px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  letter-spacing: 0.05em;
-}
-
-.meta-value {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--text);
-}
-
-.compact-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.compact-item {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px;
-}
-
-.clickable { cursor: pointer; }
-.clickable:hover { color: var(--primary); }
-
-/* Listenübersicht als Karten statt 7-Spalten-Tabelle: passt in die schmale
-   Spalte und bleibt am Handy bedienbar. */
-.list-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.list-card {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.list-card.selected {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
-}
-
-.list-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.list-card-headline {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.list-card-name {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-.list-card-date {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.list-card-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.meta-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 5px 11px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.meta-pill strong { color: var(--text); }
-
-.list-card-actions button { flex: 1 1 auto; }
-
-.table-scroll {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.table-scroll > table { min-width: 640px; }
-
-.grocery-sheet {
-  position: relative;
-  background:
-    radial-gradient(circle at top left, rgba(239, 68, 68, 0.08), transparent 18%),
-    linear-gradient(to bottom, rgba(255,255,255,0.98), rgba(249,244,230,0.98)),
-    repeating-linear-gradient(to bottom, transparent 0, transparent 36px, rgba(74, 144, 226, 0.14) 37px, transparent 38px);
-  border: 1px solid rgba(120, 93, 51, 0.16);
-  box-shadow:
-    0 24px 60px rgba(64, 43, 10, 0.12),
-    inset 0 1px 0 rgba(255,255,255,0.9);
-}
-
-.grocery-sheet::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 36px;
-  width: 2px;
-  background: rgba(220, 38, 38, 0.18);
-  pointer-events: none;
-}
-
-.grocery-sheet::after {
-  content: 'Einkaufszettel';
-  position: absolute;
-  top: 14px;
-  right: 20px;
-  color: rgba(120, 93, 51, 0.55);
-  font-size: 14px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.sheet-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.totals-strip {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 18px;
-}
-
-.note-pill {
-  background: rgba(255,252,245,0.96);
-  border: 1px dashed rgba(120, 93, 51, 0.24);
-  border-radius: 12px;
-  padding: 10px 14px;
-  display: inline-flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.note-pill span { color: var(--text-muted); font-size: 13px; }
-.note-pill strong { color: var(--text); }
-
-.grocery-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.grocery-row {
-  position: relative;
-  margin-left: 26px;
-  background: rgba(255,252,245,0.94);
-  border: 1px solid rgba(120, 93, 51, 0.14);
-  border-radius: 10px;
-  padding: 14px 16px 12px;
-  box-shadow: 0 3px 10px rgba(64, 43, 10, 0.06);
-}
-
-.grocery-row::before {
-  content: '';
-  position: absolute;
-  left: -22px;
-  top: 18px;
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(99,102,241,0.20);
-  border: 1px solid rgba(99,102,241,0.25);
-}
-
-.grocery-row.checked {
-  opacity: 0.75;
-  filter: saturate(0.75);
-}
-
-.grocery-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-@media (max-width: 860px) {
-  .grocery-main {
-    align-items: flex-start;
-  }
-}
-
-.grocery-text {
-  min-width: 0;
-  flex: 1;
-}
-
-.grocery-headline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.grocery-name {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text);
-  margin: 0;
-  font-family: "Bradley Hand", "Segoe Print", "Comic Sans MS", cursive;
-}
-
-.grocery-amount {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 12px;
-  border-radius: 999px;
-  background: rgba(120, 93, 51, 0.08);
-  border: 1px solid rgba(120, 93, 51, 0.18);
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.grocery-check {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-}
-
-.grocery-check input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  margin: 0;
-}
-
-.grocery-check-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  border: 2px solid rgba(120, 93, 51, 0.35);
-  background: rgba(255,255,255,0.7);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
-  transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
-}
-
-.grocery-check input:checked + .grocery-check-mark {
-  background: var(--primary);
-  border-color: var(--primary);
-  transform: scale(1.02);
-}
-
-.grocery-check input:checked + .grocery-check-mark::after {
-  content: '';
-  display: block;
-  width: 7px;
-  height: 13px;
-  margin: 4px 0 0 9px;
-  border: solid white;
-  border-width: 0 3px 3px 0;
-  transform: rotate(45deg);
-}
-
-.grocery-footer {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.grocery-row.checked .grocery-name,
-.grocery-row.checked .grocery-amount {
+/* Erledigte Artikel optisch abschwächen + durchstreichen. */
+.checked {
+  opacity: 0.6;
+}
+.checked .form-control,
+.checked .fw-semibold {
   text-decoration: line-through;
-  text-decoration-thickness: 2px;
-  text-decoration-color: rgba(120, 93, 51, 0.75);
-}
-
-.grocery-meta {
-  color: var(--text-muted);
-  font-size: 12px;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.grocery-prices {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.price-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(120, 93, 51, 0.08);
-  border: 1px solid rgba(120, 93, 51, 0.16);
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.price-pill strong {
-  color: var(--text);
-}
-
-.price-pill-actual {
-  background: rgba(16,185,129,0.08);
-  border-color: rgba(16,185,129,0.18);
-}
-
-.grocery-actions {
-  padding-top: 4px;
-}
-
-.inline-editor,
-.price-board,
-.store-compare {
-  margin-top: 14px;
-  background: rgba(255,250,240,0.88);
-  border: 1px dashed rgba(120, 93, 51, 0.24);
-  border-radius: 14px;
-  padding: 14px;
-}
-
-.catalog-price-hint {
-  margin-top: 12px;
-  display: inline-flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: rgba(245, 158, 11, 0.10);
-  border: 1px dashed rgba(245, 158, 11, 0.24);
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-:global(.dark-mode) .grocery-sheet {
-  background:
-    radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 22%),
-    linear-gradient(to bottom, rgba(18,24,38,0.98), rgba(15,23,42,0.98)),
-    repeating-linear-gradient(to bottom, transparent 0, transparent 36px, rgba(96, 165, 250, 0.12) 37px, transparent 38px);
-  border-color: rgba(96, 165, 250, 0.16);
-  box-shadow:
-    0 24px 60px rgba(2, 6, 23, 0.46),
-    inset 0 1px 0 rgba(255,255,255,0.03);
-}
-
-:global(.dark-mode) .grocery-sheet::before {
-  background: rgba(248, 113, 113, 0.22);
-}
-
-:global(.dark-mode) .grocery-sheet::after {
-  color: rgba(148, 163, 184, 0.7);
-}
-
-:global(.dark-mode) .grocery-row {
-  background: rgba(15, 23, 42, 0.88);
-  border-color: rgba(148, 163, 184, 0.18);
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28);
-}
-
-:global(.dark-mode) .grocery-row::before {
-  background: rgba(96, 165, 250, 0.28);
-  border-color: rgba(96, 165, 250, 0.38);
-}
-
-:global(.dark-mode) .grocery-amount,
-:global(.dark-mode) .price-pill {
-  background: rgba(30, 41, 59, 0.92);
-  border-color: rgba(148, 163, 184, 0.18);
-}
-
-:global(.dark-mode) .price-pill-actual {
-  background: rgba(6, 78, 59, 0.35);
-  border-color: rgba(16,185,129,0.24);
-}
-
-:global(.dark-mode) .grocery-check-mark {
-  background: rgba(30, 41, 59, 0.95);
-  border-color: rgba(148, 163, 184, 0.3);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-}
-
-.complete-budget-box {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 220px;
-}
-
-.budget-category-select {
-  min-width: 220px;
-}
-.budget-hint { margin: 6px 0 0; font-size: 12px; font-weight: 600; color: #10b981; }
-.budget-hint-over { color: #ef4444; }
-
-/* Beleg-Scan-Modal */
-.receipt-modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 16px; backdrop-filter: blur(4px); }
-.receipt-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 780px; max-height: 92vh; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
-.receipt-modal-header { display: flex; justify-content: space-between; align-items: center; }
-.receipt-modal-header h2 { font-size: 17px; font-weight: 700; color: var(--text); margin: 0; }
-.receipt-modal-close { background: none; border: none; font-size: 16px; cursor: pointer; color: var(--text-muted); padding: 4px 8px; border-radius: 6px; }
-.receipt-modal-close:hover { background: var(--surface2); }
-.receipt-modal-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text); }
-.receipt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.receipt-table th { text-align: left; padding: 6px 4px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-.receipt-table td { padding: 4px; border-top: 1px solid var(--border); }
-.receipt-table input, .receipt-table select { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font-size: 13px; box-sizing: border-box; }
-.receipt-num { max-width: 90px; }
-.receipt-sum { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; text-align: right; }
-.receipt-modal-footer { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
-.receipt-actions { display: flex; justify-content: flex-end; gap: 10px; }
-
-/* Notizblock-Eingabe */
-.notebook-card { gap: 14px; }
-.match-mode-note { font-size: 12px; color: var(--muted); margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.link-btn { background: none; border: none; padding: 0; color: var(--accent, #2d6cdf); font: inherit; cursor: pointer; text-decoration: underline; }
-.notebook-list { display: flex; flex-direction: column; }
-.notebook-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--border); }
-.notebook-row.checked .notebook-input { text-decoration: line-through; color: var(--muted); }
-.notebook-input { flex: 1 1 auto; border: none; background: transparent; font-size: 15px; color: var(--text); padding: 4px 0; min-width: 0; }
-.notebook-input:focus { outline: none; }
-.notebook-amount { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.notebook-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-muted, #eef2f7); color: var(--muted); white-space: nowrap; }
-.notebook-badge-new { background: #fdf0d5; color: #9a6b00; }
-.notebook-row-new .notebook-bullet { width: 22px; text-align: center; color: var(--muted); font-size: 18px; }
-
-/* Kompaktere Abstände und volle Button-Breiten am Handy */
-@media (max-width: 560px) {
-  .dashboard-page { padding: 16px 12px; gap: 16px; }
-  .panel-card, .form-card, .data-card, .sheet-card { padding: 16px; }
-  .grocery-row { margin-left: 16px; padding: 12px 12px 10px; }
-  .grocery-row::before { left: -14px; }
-  .grocery-sheet::before { inset: 0 auto 0 20px; }
-  .actions button { flex: 1 1 auto; }
 }
 </style>

@@ -369,121 +369,105 @@ onMounted(loadData)
 
 
 <template>
-  <div class="dashboard-page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Rezepte <span class="title-accent">Kochbuch</span></h1>
-        <p class="page-subtitle">Rezepte pflegen, Zutaten strukturieren und direkt in Einkaufslisten überführen.</p>
-      </div>
+  <BContainer class="py-4 d-flex flex-column gap-4">
+    <div>
+      <h1 class="h2 fw-bold mb-1">Rezepte <span class="text-primary">Kochbuch</span></h1>
+      <p class="text-secondary mb-0">
+        Rezepte pflegen, Zutaten strukturieren und direkt in Einkaufslisten überführen.
+      </p>
     </div>
 
-    <div v-if="error" class="alert alert-error">{{ error }}</div>
-    <div v-if="success" class="alert alert-success">{{ success }}</div>
-    <div v-if="loading" class="alert">Lade Rezeptdaten…</div>
+    <BAlert :model-value="!!error" variant="danger">{{ error }}</BAlert>
+    <BAlert :model-value="!!success" variant="success">{{ success }}</BAlert>
+    <BAlert :model-value="loading" variant="info">Lade Rezeptdaten…</BAlert>
 
-    <div class="content-grid">
-      <div class="stack">
-        <div class="form-card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Neues Rezept</h2>
-              <p class="card-copy">Name, Beschreibung und Basis-Portionen als saubere Grundlage.</p>
-            </div>
-          </div>
+    <BRow class="g-4">
+      <BCol lg="4">
+        <div class="d-flex flex-column gap-4">
+          <BCard title="Neues Rezept">
+            <p class="text-secondary small">Name, Beschreibung und Basis-Portionen als saubere Grundlage.</p>
 
-          <form @submit.prevent="createRecipe">
-            <div class="form-grid full">
-              <input v-model="newRecipe.name" type="text" placeholder="Rezeptname" required />
-              <input v-model="newRecipe.baseServings" type="number" min="1" step="1" placeholder="Basis-Portionen" required />
-              <textarea v-model="newRecipe.description" placeholder="Beschreibung"></textarea>
-            </div>
-            <div class="form-actions">
-              <button class="btn-add" type="submit">Rezept speichern</button>
-            </div>
-          </form>
-        </div>
+            <BForm @submit.prevent="createRecipe">
+              <BFormInput v-model="newRecipe.name" type="text" placeholder="Rezeptname" required class="mb-2" />
+              <BFormInput
+                v-model="newRecipe.baseServings"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="Basis-Portionen"
+                required
+                class="mb-2"
+              />
+              <BFormTextarea v-model="newRecipe.description" placeholder="Beschreibung" rows="3" class="mb-3" />
+              <BButton type="submit" variant="primary">Rezept speichern</BButton>
+            </BForm>
+          </BCard>
 
-        <div class="form-card">
-          <div class="card-header">
-            <div>
-              <h2 class="card-title">Rezept in Einkaufsliste übernehmen</h2>
-              <p class="card-copy">Ein einzelnes Rezept gezielt auf eine bestehende Liste setzen.</p>
-            </div>
-          </div>
+          <BCard title="Rezept in Einkaufsliste übernehmen">
+            <p class="text-secondary small">Ein einzelnes Rezept gezielt auf eine bestehende Liste setzen.</p>
 
-          <div class="form-grid full">
-            <select v-model="selectedRecipeId">
+            <BFormSelect v-model="selectedRecipeId" class="mb-2">
               <option disabled value="">Rezept wählen</option>
               <option v-for="recipe in recipes" :key="recipe.id" :value="recipe.id">{{ recipe.name }}</option>
-            </select>
-            <select v-model="selectedShoppingListId">
+            </BFormSelect>
+            <BFormSelect v-model="selectedShoppingListId" class="mb-3">
               <option disabled value="">Einkaufsliste wählen</option>
               <option v-for="list in shoppingLists" :key="list.id" :value="list.id">{{ list.name }}</option>
-            </select>
-          </div>
+            </BFormSelect>
 
-          <div class="form-actions">
-            <button class="btn-add" type="button" @click="addRecipeToShoppingList">Zur Einkaufsliste hinzufügen</button>
-          </div>
+            <BButton type="button" variant="primary" @click="addRecipeToShoppingList">
+              Zur Einkaufsliste hinzufügen
+            </BButton>
+          </BCard>
         </div>
-      </div>
+      </BCol>
 
-      <div class="data-card">
-        <div class="card-header">
-          <div>
-            <h2 class="card-title">Rezeptübersicht</h2>
-            <p class="card-copy">Rezept auswählen, bearbeiten und Zutaten direkt pflegen.</p>
-          </div>
-        </div>
+      <BCol lg="8">
+        <BCard title="Rezeptübersicht">
+          <p class="text-secondary small">Rezept auswählen, bearbeiten und Zutaten direkt pflegen.</p>
 
-        <div v-if="recipes.length > 0" class="compact-list">
-          <div v-for="recipe in recipes" :key="recipe.id" class="compact-item">
-            <template v-if="editRecipeId === recipe.id">
-              <div class="form-grid full">
-                <input v-model="editRecipe.name" type="text" />
-                <input v-model="editRecipe.baseServings" type="number" min="1" step="1" />
-                <textarea v-model="editRecipe.description" placeholder="Beschreibung"></textarea>
-              </div>
-              <div class="form-actions">
-                <button class="btn-save" @click="updateRecipe(recipe.id)">Speichern</button>
-                <button class="btn-secondary" @click="cancelEditRecipe">Abbrechen</button>
-              </div>
-            </template>
-
-            <template v-else>
-              <div class="card-header" style="margin-bottom: 8px;">
-                <div>
-                  <div style="font-weight:800; font-size:18px;">{{ recipe.name }}</div>
-                  <div class="card-copy" v-if="recipe.description">{{ recipe.description }}</div>
+          <div v-if="recipes.length > 0" class="d-flex flex-column gap-3">
+            <BCard v-for="recipe in recipes" :key="recipe.id" class="bg-body-tertiary">
+              <template v-if="editRecipeId === recipe.id">
+                <BFormInput v-model="editRecipe.name" type="text" class="mb-2" />
+                <BFormInput v-model="editRecipe.baseServings" type="number" min="1" step="1" class="mb-2" />
+                <BFormTextarea v-model="editRecipe.description" placeholder="Beschreibung" rows="3" class="mb-3" />
+                <div class="d-flex gap-2 flex-wrap">
+                  <BButton size="sm" variant="primary" @click="updateRecipe(recipe.id)">Speichern</BButton>
+                  <BButton size="sm" variant="outline-secondary" @click="cancelEditRecipe">Abbrechen</BButton>
                 </div>
-                <span class="badge badge-primary">{{ recipe.baseServings }} Portionen</span>
-              </div>
+              </template>
 
-              <div class="actions">
-                <button class="btn-secondary" @click="selectedRecipeId = recipe.id">Auswählen</button>
-                <button class="btn-secondary" @click="startEditRecipe(recipe)">Bearbeiten</button>
-                <button class="btn-danger" @click="deleteRecipe(recipe.id)">Löschen</button>
-              </div>
-            </template>
+              <template v-else>
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                  <div>
+                    <div class="fw-bold fs-5">{{ recipe.name }}</div>
+                    <div class="text-secondary small" v-if="recipe.description">{{ recipe.description }}</div>
+                  </div>
+                  <BBadge variant="primary">{{ recipe.baseServings }} Portionen</BBadge>
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap">
+                  <BButton size="sm" variant="outline-secondary" @click="selectedRecipeId = recipe.id">Auswählen</BButton>
+                  <BButton size="sm" variant="outline-secondary" @click="startEditRecipe(recipe)">Bearbeiten</BButton>
+                  <BButton size="sm" variant="outline-danger" @click="deleteRecipe(recipe.id)">Löschen</BButton>
+                </div>
+              </template>
+            </BCard>
           </div>
-        </div>
 
-        <div v-else class="empty-state">Noch keine Rezepte vorhanden.</div>
-      </div>
-    </div>
+          <p v-else class="text-secondary mb-0">Noch keine Rezepte vorhanden.</p>
+        </BCard>
+      </BCol>
+    </BRow>
 
-    <div v-if="selectedRecipe" class="data-card">
-      <div class="card-header">
-        <div>
-          <h2 class="card-title">Zutaten für „{{ selectedRecipe.name }}“</h2>
-          <p class="card-copy">Pflege die Zutaten direkt am Rezept – sauber, knapp, eindeutig.</p>
-        </div>
-      </div>
+    <BCard v-if="selectedRecipe" :title="`Zutaten für „${selectedRecipe.name}“`">
+      <p class="text-secondary small">Pflege die Zutaten direkt am Rezept – sauber, knapp, eindeutig.</p>
 
-      <div class="form-card" style="padding: 0; border: none; box-shadow:none; background:transparent;">
-        <form @submit.prevent="createIngredient">
-          <div class="form-grid">
-            <input
+      <BForm @submit.prevent="createIngredient">
+        <BRow class="g-2">
+          <BCol md="6">
+            <BFormInput
               v-model="newIngredient.name"
               list="recipe-ingredient-suggestions"
               type="text"
@@ -491,14 +475,16 @@ onMounted(loadData)
               required
               @input="applyCatalogSuggestion(newIngredient)"
             />
-            <input v-model="newIngredient.quantity" type="number" min="0" step="0.01" placeholder="Menge" required />
-            <input v-model="newIngredient.unit" type="text" placeholder="Einheit" required />
-          </div>
-          <div class="form-actions">
-            <button class="btn-add" type="submit">Zutat hinzufügen</button>
-          </div>
-        </form>
-      </div>
+          </BCol>
+          <BCol md="3">
+            <BFormInput v-model="newIngredient.quantity" type="number" min="0" step="0.01" placeholder="Menge" required />
+          </BCol>
+          <BCol md="3">
+            <BFormInput v-model="newIngredient.unit" type="text" placeholder="Einheit" required />
+          </BCol>
+        </BRow>
+        <BButton type="submit" variant="primary" class="mt-3">Zutat hinzufügen</BButton>
+      </BForm>
       <datalist id="recipe-ingredient-suggestions">
         <option
           v-for="item in newIngredientSuggestions"
@@ -508,7 +494,7 @@ onMounted(loadData)
         />
       </datalist>
 
-      <table v-if="selectedRecipe.ingredients.length > 0" class="data-table" style="margin-top: 18px;">
+      <BTableSimple v-if="selectedRecipe.ingredients.length > 0" hover responsive class="align-middle mt-3 mb-0">
         <thead>
           <tr>
             <th>Name</th>
@@ -521,18 +507,20 @@ onMounted(loadData)
           <tr v-for="ingredient in selectedRecipe.ingredients" :key="ingredient.id">
             <template v-if="editIngredientId === ingredient.id">
               <td>
-                <input
+                <BFormInput
                   v-model="editIngredient.name"
                   list="recipe-edit-ingredient-suggestions"
                   type="text"
                   @input="applyCatalogSuggestion(editIngredient)"
                 />
               </td>
-              <td><input v-model="editIngredient.quantity" type="number" min="0" step="0.01" /></td>
-              <td><input v-model="editIngredient.unit" type="text" /></td>
-              <td class="actions">
-                <button class="btn-save" @click="updateIngredient(ingredient.id)">Speichern</button>
-                <button class="btn-secondary" @click="cancelEditIngredient">Abbrechen</button>
+              <td><BFormInput v-model="editIngredient.quantity" type="number" min="0" step="0.01" /></td>
+              <td><BFormInput v-model="editIngredient.unit" type="text" /></td>
+              <td>
+                <div class="d-flex gap-2 flex-wrap">
+                  <BButton size="sm" variant="primary" @click="updateIngredient(ingredient.id)">Speichern</BButton>
+                  <BButton size="sm" variant="outline-secondary" @click="cancelEditIngredient">Abbrechen</BButton>
+                </div>
               </td>
             </template>
 
@@ -540,16 +528,18 @@ onMounted(loadData)
               <td>{{ ingredient.name }}</td>
               <td>{{ ingredient.quantity }}</td>
               <td>{{ ingredient.unit }}</td>
-              <td class="actions">
-                <button class="btn-secondary" @click="startEditIngredient(ingredient)">Bearbeiten</button>
-                <button class="btn-danger" @click="deleteIngredient(ingredient.id)">Löschen</button>
+              <td>
+                <div class="d-flex gap-2 flex-wrap">
+                  <BButton size="sm" variant="outline-secondary" @click="startEditIngredient(ingredient)">Bearbeiten</BButton>
+                  <BButton size="sm" variant="outline-danger" @click="deleteIngredient(ingredient.id)">Löschen</BButton>
+                </div>
               </td>
             </template>
           </tr>
         </tbody>
-      </table>
+      </BTableSimple>
 
-      <div v-else class="empty-state" style="margin-top: 18px;">Dieses Rezept enthält noch keine Zutaten.</div>
+      <p v-else class="text-secondary mt-3 mb-0">Dieses Rezept enthält noch keine Zutaten.</p>
       <datalist id="recipe-edit-ingredient-suggestions">
         <option
           v-for="item in editIngredientSuggestions"
@@ -558,420 +548,6 @@ onMounted(loadData)
           :label="`${item.name} · ${item.defaultUnit}`"
         />
       </datalist>
-    </div>
-  </div>
+    </BCard>
+  </BContainer>
 </template>
-
-<style scoped>
-.dashboard-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.page-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.page-title {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -1px;
-  margin: 0;
-}
-
-.title-accent { color: var(--primary); }
-
-.page-subtitle {
-  color: var(--text-muted);
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-.page-actions,
-.header-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.alert {
-  padding: 14px 16px;
-  border-radius: var(--radius-sm, 12px);
-  font-size: 14px;
-  border: 1px solid transparent;
-}
-
-.alert-error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border-color: rgba(239, 68, 68, 0.2);
-}
-
-.alert-success {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border-color: rgba(16, 185, 129, 0.2);
-}
-
-.btn-add,
-.btn-save,
-.btn-secondary,
-.btn-danger,
-.btn-ghost,
-.small-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.12s ease;
-  text-decoration: none;
-}
-
-.btn-add,
-.btn-save {
-  background: var(--primary);
-  color: white;
-  border: none;
-}
-
-.btn-secondary,
-.small-button {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.btn-danger {
-  background: rgba(239,68,68,0.12);
-  color: #ef4444;
-  border: 1px solid rgba(239,68,68,0.18);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--text);
-  border: 1px dashed var(--border);
-}
-
-.btn-add:hover,
-.btn-save:hover,
-.btn-secondary:hover,
-.btn-danger:hover,
-.btn-ghost:hover,
-.small-button:hover {
-  opacity: 0.95;
-  transform: translateY(-1px);
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-@media (max-width: 900px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (max-width: 560px) {
-  .stats-grid { grid-template-columns: 1fr; }
-}
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 22px 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--border);
-}
-
-.stat-icon { font-size: 30px; z-index: 1; }
-.stat-info { display: flex; flex-direction: column; gap: 3px; z-index: 1; }
-.stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.stat-value {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -0.5px;
-}
-.stat-bg-shape {
-  position: absolute;
-  right: -20px;
-  top: -20px;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  opacity: 0.06;
-  background: var(--primary);
-}
-
-.content-grid {
-  display: grid;
-  grid-template-columns: minmax(300px, 380px) 1fr;
-  gap: 20px;
-}
-
-.content-grid.single {
-  grid-template-columns: 1fr;
-}
-
-@media (max-width: 980px) {
-  .content-grid { grid-template-columns: 1fr; }
-}
-
-.panel-card,
-.form-card,
-.data-card,
-.side-card,
-.week-card,
-.list-card,
-.sheet-card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--border);
-}
-
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.card-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--text);
-  margin: 0;
-}
-
-.card-copy,
-.hint,
-.muted,
-.empty-state {
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 12px;
-}
-
-.form-grid.full {
-  grid-template-columns: 1fr;
-}
-
-@media (max-width: 700px) {
-  .form-grid { grid-template-columns: 1fr; }
-}
-
-.field-span-2 { grid-column: span 2; }
-@media (max-width: 700px) { .field-span-2 { grid-column: span 1; } }
-
-.form-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-input,
-textarea,
-select,
-button {
-  font: inherit;
-}
-
-input,
-textarea,
-select {
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  padding: 12px 14px;
-  min-height: 46px;
-  box-sizing: border-box;
-}
-
-textarea {
-  min-height: 104px;
-  resize: vertical;
-}
-
-.checkbox-row,
-.inline-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text);
-  font-size: 14px;
-}
-
-.inline-checkbox input,
-.checkbox-row input {
-  width: auto;
-  min-height: auto;
-}
-
-.data-table,
-.nested-table,
-.paper-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table th,
-.data-table td,
-.nested-table th,
-.nested-table td,
-.paper-table th,
-.paper-table td {
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-  text-align: left;
-}
-
-.data-table thead th,
-.nested-table thead th,
-.paper-table thead th {
-  color: var(--text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.data-table tbody tr:hover,
-.paper-table tbody tr:hover {
-  background: rgba(99,102,241,0.04);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.status-chip,
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  width: fit-content;
-}
-
-.badge-primary,
-.status-chip.primary { background: rgba(99,102,241,0.12); color: var(--primary); }
-.badge-success,
-.status-chip.success { background: rgba(16,185,129,0.12); color: #10b981; }
-.badge-warning,
-.status-chip.warning { background: rgba(245,158,11,0.12); color: #d97706; }
-.badge-danger,
-.status-chip.danger { background: rgba(239,68,68,0.12); color: #ef4444; }
-
-.empty-state {
-  background: var(--surface2);
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  padding: 20px;
-  text-align: center;
-}
-
-.split-meta {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-@media (max-width: 780px) { .split-meta { grid-template-columns: 1fr; } }
-
-.meta-tile {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-
-.meta-label {
-  display: block;
-  font-size: 12px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  letter-spacing: 0.05em;
-}
-
-.meta-value {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--text);
-}
-
-.compact-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.compact-item {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px;
-}
-
-.clickable { cursor: pointer; }
-.clickable:hover { color: var(--primary); }
-
-@media (max-width: 720px) {
-  .data-table,
-  .nested-table,
-  .paper-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-}
-</style>

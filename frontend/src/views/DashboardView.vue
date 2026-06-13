@@ -1,311 +1,231 @@
 <template>
-  <div class="dashboard-page">
-    <div class="page-header">
+  <BContainer class="py-4 d-flex flex-column gap-4">
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3">
       <div>
-        <h1 class="page-title">Dashboard <span class="title-accent">Planer</span></h1>
-        <p class="page-subtitle">{{ monthLabel }} · Termine und Essensplanung</p>
+        <h1 class="h2 fw-bold mb-1">Dashboard <span class="text-primary">Planer</span></h1>
+        <p class="text-secondary mb-0">{{ monthLabel }} · Termine und Essensplanung</p>
       </div>
 
-      <div class="header-actions">
-        <span :class="['sync-chip', syncStatusClass]">{{ syncStatusLabel }}</span>
-        <button class="btn-secondary" @click="showSubscriptionModal = true">Kalender-Abos</button>
-        <button class="btn-secondary" @click="goToPreviousMonth">←</button>
-        <button class="btn-secondary" @click="goToToday">Heute</button>
-        <button class="btn-secondary" @click="goToNextMonth">→</button>
-      </div>
-    </div>
-
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon">📅</div>
-        <div class="stat-info">
-          <span class="stat-label">Termine</span>
-          <span class="stat-value">{{ events.length }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon">🍽️</div>
-        <div class="stat-info">
-          <span class="stat-label">Geplante Meals</span>
-          <span class="stat-value">{{ mealPlans.length }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon">🗓️</div>
-        <div class="stat-info">
-          <span class="stat-label">Ausgewählter Tag</span>
-          <span class="stat-value">{{ formatSelectedDate(selectedDate) }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon">✅</div>
-        <div class="stat-info">
-          <span class="stat-label">Meals erledigt</span>
-          <span class="stat-value">{{ completedMealsCount }}</span>
-        </div>
-        <div class="stat-bg-shape"></div>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        <BBadge :variant="syncStatusVariant">{{ syncStatusLabel }}</BBadge>
+        <BButton variant="outline-secondary" @click="showSubscriptionModal = true">Kalender-Abos</BButton>
+        <BButton variant="outline-secondary" @click="goToPreviousMonth">←</BButton>
+        <BButton variant="outline-secondary" @click="goToToday">Heute</BButton>
+        <BButton variant="outline-secondary" @click="goToNextMonth">→</BButton>
       </div>
     </div>
 
-    <div v-if="error" class="alert alert-error">⚠ {{ error }}</div>
-    <div v-if="success" class="alert alert-success">✓ {{ success }}</div>
-    <div v-if="pendingMutationCount > 0" class="alert">{{ pendingMutationLabel }}</div>
-    <div v-if="offlineSnapshotAt" class="alert">
-      Offline-Snapshot von {{ offlineSnapshotLabel }}
-    </div>
+    <BRow class="g-3">
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">📅 Termine</div>
+          <div class="fs-4 fw-bold">{{ events.length }}</div>
+        </BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">🍽️ Geplante Meals</div>
+          <div class="fs-4 fw-bold">{{ mealPlans.length }}</div>
+        </BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">🗓️ Ausgewählter Tag</div>
+          <div class="fs-5 fw-bold">{{ formatSelectedDate(selectedDate) }}</div>
+        </BCard>
+      </BCol>
+      <BCol md="3" sm="6">
+        <BCard>
+          <div class="text-secondary text-uppercase small">✅ Meals erledigt</div>
+          <div class="fs-4 fw-bold">{{ completedMealsCount }}</div>
+        </BCard>
+      </BCol>
+    </BRow>
 
-    <div class="dashboard-grid">
-      <div class="calendar-card">
-        <div class="chart-header">
-          <span class="chart-title">Monatskalender</span>
-          <span class="chart-badge">{{ monthLabel }}</span>
-        </div>
+    <BAlert :model-value="!!error" variant="danger">⚠ {{ error }}</BAlert>
+    <BAlert :model-value="!!success" variant="success">✓ {{ success }}</BAlert>
+    <BAlert :model-value="pendingMutationCount > 0" variant="info">{{ pendingMutationLabel }}</BAlert>
+    <BAlert :model-value="!!offlineSnapshotAt" variant="info">Offline-Snapshot von {{ offlineSnapshotLabel }}</BAlert>
 
-        <div class="calendar-weekdays">
-          <span v-for="day in weekdays" :key="day">{{ day }}</span>
-        </div>
+    <BRow class="g-4">
+      <BCol lg="7">
+        <BCard>
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="fw-bold">Monatskalender</span>
+            <BBadge variant="primary">{{ monthLabel }}</BBadge>
+          </div>
 
-        <div class="calendar-grid">
-          <button
-            v-for="day in calendarDays"
-            :key="day.key"
-            class="calendar-day"
-            :class="{
-              muted: !day.isCurrentMonth,
-              today: day.isToday,
-              selected: day.iso === selectedDate
-            }"
-            @click="selectedDate = day.iso"
-          >
-            <div class="day-number">{{ day.dayNumber }}</div>
+          <div class="calendar-weekdays text-secondary fw-bold small mb-2">
+            <span v-for="day in weekdays" :key="day">{{ day }}</span>
+          </div>
 
-            <div class="day-indicators">
-              <span v-if="getEventsForDay(day.iso).length > 0" class="indicator indicator-event">
-                {{ getEventsForDay(day.iso).length }} Termin{{ getEventsForDay(day.iso).length > 1 ? 'e' : '' }}
-              </span>
-              <span v-if="getMealsForDay(day.iso).length > 0" class="indicator indicator-meal">
-                {{ getMealsForDay(day.iso).length }} Meal{{ getMealsForDay(day.iso).length > 1 ? 's' : '' }}
-              </span>
-            </div>
-          </button>
-        </div>
-      </div>
+          <div class="calendar-grid">
+            <button
+              v-for="day in calendarDays"
+              :key="day.key"
+              type="button"
+              class="calendar-day border rounded bg-body-tertiary text-start p-2"
+              :class="{
+                'opacity-50': !day.isCurrentMonth,
+                'border-primary': day.isToday,
+                selected: day.iso === selectedDate,
+              }"
+              @click="selectedDate = day.iso"
+            >
+              <div class="fw-bold small">{{ day.dayNumber }}</div>
+              <div class="d-flex flex-column gap-1 align-items-start">
+                <BBadge v-if="getEventsForDay(day.iso).length > 0" variant="primary">
+                  {{ getEventsForDay(day.iso).length }} Termin{{ getEventsForDay(day.iso).length > 1 ? 'e' : '' }}
+                </BBadge>
+                <BBadge v-if="getMealsForDay(day.iso).length > 0" variant="success">
+                  {{ getMealsForDay(day.iso).length }} Meal{{ getMealsForDay(day.iso).length > 1 ? 's' : '' }}
+                </BBadge>
+              </div>
+            </button>
+          </div>
+        </BCard>
+      </BCol>
 
-      <div class="side-panel">
-        <div class="panel-card">
-          <div class="chart-header">
-            <span class="chart-title">Tag · {{ formatSelectedDate(selectedDate) }}</span>
-            <div class="panel-actions">
-              <button class="btn-add-small" @click="openEventModal">+ Termin</button>
-              <button class="btn-add-small" @click="showMealModal = true">+ Meal</button>
+      <BCol lg="5">
+        <BCard>
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <span class="fw-bold">Tag · {{ formatSelectedDate(selectedDate) }}</span>
+            <div class="d-flex gap-2">
+              <BButton size="sm" variant="primary" @click="openEventModal">+ Termin</BButton>
+              <BButton size="sm" variant="primary" @click="showMealModal = true">+ Meal</BButton>
             </div>
           </div>
 
-          <div class="day-section">
-            <h3>Termine</h3>
-            <div v-if="selectedDayEvents.length === 0" class="empty-state">Keine Termine.</div>
-            <div v-else class="item-list">
-              <div v-for="event in selectedDayEvents" :key="event.id" class="item-card">
-                <div class="item-main">
+          <div class="mb-4">
+            <h3 class="h6">Termine</h3>
+            <p v-if="selectedDayEvents.length === 0" class="text-secondary small mb-0">Keine Termine.</p>
+            <div v-else class="d-flex flex-column gap-2">
+              <div v-for="event in selectedDayEvents" :key="event.id" class="border rounded p-2 bg-body-tertiary">
+                <div class="d-flex justify-content-between gap-2 flex-wrap">
                   <strong>{{ event.title }}</strong>
-                  <span class="item-time">
-                    {{ formatTimeRange(event.startTime, event.endTime) }}
-                  </span>
+                  <span class="text-secondary small">{{ formatTimeRange(event.startTime, event.endTime) }}</span>
                 </div>
-                <div v-if="event.isImported" class="subscription-chip">
-                  📡 {{ event.sourceName || 'Kalender-Abo' }}
+                <BBadge v-if="event.isImported" variant="primary" class="mt-1">📡 {{ event.sourceName || 'Kalender-Abo' }}</BBadge>
+                <div v-if="event.notes" class="text-secondary small mt-1">{{ event.notes }}</div>
+                <div v-if="!event.isImported" class="text-end mt-1">
+                  <BButton size="sm" variant="outline-danger" @click="deleteEvent(event.id)">Löschen</BButton>
                 </div>
-                <div v-if="event.notes" class="item-notes">{{ event.notes }}</div>
-                <button v-if="!event.isImported" class="btn-delete" @click="deleteEvent(event.id)">Löschen</button>
               </div>
             </div>
           </div>
 
-          <div class="day-section">
-            <h3>Essensplanung</h3>
-            <div v-if="selectedDayMeals.length === 0" class="empty-state">
-              Keine Meals geplant.
-            </div>
-            <div v-else class="item-list">
-              <div v-for="meal in selectedDayMeals" :key="meal.id" class="item-card">
-                <div class="item-main">
+          <div>
+            <h3 class="h6">Essensplanung</h3>
+            <p v-if="selectedDayMeals.length === 0" class="text-secondary small mb-0">Keine Meals geplant.</p>
+            <div v-else class="d-flex flex-column gap-2">
+              <div v-for="meal in selectedDayMeals" :key="meal.id" class="border rounded p-2 bg-body-tertiary">
+                <div class="d-flex justify-content-between gap-2 flex-wrap">
                   <strong>{{ meal.mealType }} · {{ meal.recipeName || 'Rezept' }}</strong>
-                  <span class="item-time">{{ meal.servings }} Portion(en)</span>
+                  <span class="text-secondary small">{{ meal.servings }} Portion(en)</span>
                 </div>
-                <div v-if="meal.isCompleted" class="subscription-chip">
-                  ✅ Erledigt
-                </div>
-                <div v-if="meal.notes" class="item-notes">{{ meal.notes }}</div>
-                <div class="item-actions">
-                  <button
-                    v-if="!meal.isCompleted"
-                    class="btn-save btn-inline"
-                    @click="completeMeal(meal.id)"
-                  >
+                <BBadge v-if="meal.isCompleted" variant="success" class="mt-1">✅ Erledigt</BBadge>
+                <div v-if="meal.notes" class="text-secondary small mt-1">{{ meal.notes }}</div>
+                <div class="d-flex justify-content-end gap-2 flex-wrap mt-1">
+                  <BButton v-if="!meal.isCompleted" size="sm" variant="primary" @click="completeMeal(meal.id)">
                     Als gekocht markieren
-                  </button>
-                  <button class="btn-delete" @click="deleteMeal(meal.id)">Löschen</button>
+                  </BButton>
+                  <BButton size="sm" variant="outline-danger" @click="deleteMeal(meal.id)">Löschen</BButton>
                 </div>
               </div>
             </div>
           </div>
+        </BCard>
+      </BCol>
+    </BRow>
+
+    <!-- Event Modal -->
+    <BModal v-model="showEventModal" title="Neuer Termin" ok-title="Speichern" cancel-title="Abbrechen" @ok="createEvent">
+      <div class="d-flex flex-column gap-3">
+        <div>
+          <label class="form-label small fw-semibold">Titel</label>
+          <BFormInput v-model="eventForm.title" type="text" />
+        </div>
+        <BRow class="g-2">
+          <BCol>
+            <label class="form-label small fw-semibold">Von</label>
+            <BFormInput v-model="eventForm.startDate" type="date" />
+          </BCol>
+          <BCol>
+            <label class="form-label small fw-semibold">Bis</label>
+            <BFormInput v-model="eventForm.endDate" type="date" />
+          </BCol>
+        </BRow>
+        <BFormCheckbox v-model="eventForm.isAllDay" switch>Ganztägig</BFormCheckbox>
+        <BRow v-if="!eventForm.isAllDay" class="g-2">
+          <BCol>
+            <label class="form-label small fw-semibold">Start</label>
+            <BFormInput v-model="eventForm.startTime" type="time" step="60" />
+          </BCol>
+          <BCol>
+            <label class="form-label small fw-semibold">Ende</label>
+            <BFormInput v-model="eventForm.endTime" type="time" step="60" />
+          </BCol>
+        </BRow>
+        <div>
+          <label class="form-label small fw-semibold">Notizen</label>
+          <BFormTextarea v-model="eventForm.notes" rows="3" />
         </div>
       </div>
-    </div>
+    </BModal>
 
-    <Teleport to="body">
-      <div v-if="showEventModal" class="modal-backdrop" @click.self="showEventModal = false">
-        <div class="modal-box">
-          <div class="modal-header">
-            <h2>Neuer Termin</h2>
-            <button class="modal-close" @click="showEventModal = false">✕</button>
-          </div>
-
-          <div class="modal-body">
-            <div class="form-group">
-              <label>Titel</label>
-              <input v-model="eventForm.title" class="form-input" type="text" />
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Von</label>
-                <input v-model="eventForm.startDate" class="form-input" type="date" />
-              </div>
-
-              <div class="form-group">
-                <label>Bis</label>
-                <input v-model="eventForm.endDate" class="form-input" type="date" />
-              </div>
-            </div>
-
-            <label class="toggle-row">
-              <span>Ganztägig</span>
-              <input v-model="eventForm.isAllDay" type="checkbox" />
-            </label>
-
-            <div v-if="!eventForm.isAllDay" class="form-row">
-              <div class="form-group">
-                <label>Start</label>
-                <input v-model="eventForm.startTime" class="form-input" type="time" step="60" />
-              </div>
-
-              <div class="form-group">
-                <label>Ende</label>
-                <input v-model="eventForm.endTime" class="form-input" type="time" step="60" />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Notizen</label>
-              <textarea v-model="eventForm.notes" class="form-input textarea"></textarea>
-            </div>
-          </div>
-
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="showEventModal = false">Abbrechen</button>
-            <button class="btn-save" @click="createEvent">Speichern</button>
-          </div>
+    <!-- Meal Modal -->
+    <BModal v-model="showMealModal" title="Meal planen" ok-title="Speichern" cancel-title="Abbrechen" @ok="createMeal">
+      <div class="d-flex flex-column gap-3">
+        <div>
+          <label class="form-label small fw-semibold">Rezept</label>
+          <BFormSelect v-model="mealForm.recipeId">
+            <option value="">Bitte wählen</option>
+            <option v-for="recipe in recipes" :key="recipe.id" :value="recipe.id">{{ recipe.name }}</option>
+          </BFormSelect>
+        </div>
+        <BRow class="g-2">
+          <BCol>
+            <label class="form-label small fw-semibold">Mahlzeit</label>
+            <BFormSelect v-model="mealForm.mealType">
+              <option>Breakfast</option>
+              <option>Lunch</option>
+              <option>Dinner</option>
+              <option>Snack</option>
+            </BFormSelect>
+          </BCol>
+          <BCol>
+            <label class="form-label small fw-semibold">Portionen</label>
+            <BFormInput v-model.number="mealForm.servings" type="number" min="1" />
+          </BCol>
+        </BRow>
+        <div>
+          <label class="form-label small fw-semibold">Notizen</label>
+          <BFormTextarea v-model="mealForm.notes" rows="3" />
         </div>
       </div>
-    </Teleport>
+    </BModal>
 
-    <Teleport to="body">
-      <div v-if="showMealModal" class="modal-backdrop" @click.self="showMealModal = false">
-        <div class="modal-box">
-          <div class="modal-header">
-            <h2>Meal planen</h2>
-            <button class="modal-close" @click="showMealModal = false">✕</button>
-          </div>
+    <!-- Subscription Modal -->
+    <BModal v-model="showSubscriptionModal" title="Kalender-Abos" ok-only ok-title="Schließen">
+      <p class="text-secondary small">ICS- oder Kalender-Feed-URL hinterlegen. Die Abos werden im Backend gespeichert und im Dashboard eingeblendet.</p>
 
-          <div class="modal-body">
-            <div class="form-group">
-              <label>Rezept</label>
-              <select v-model="mealForm.recipeId" class="form-input">
-                <option value="">Bitte wählen</option>
-                <option v-for="recipe in recipes" :key="recipe.id" :value="recipe.id">
-                  {{ recipe.name }}
-                </option>
-              </select>
-            </div>
+      <div class="d-flex gap-2 align-items-end mb-3 flex-wrap">
+        <div class="flex-grow-1">
+          <label class="form-label small fw-semibold">Kalender-URL</label>
+          <BFormInput v-model="subscriptionUrl" type="url" placeholder="https://…" />
+        </div>
+        <BButton variant="primary" @click="addSubscription">Hinzufügen</BButton>
+      </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label>Mahlzeit</label>
-                <select v-model="mealForm.mealType" class="form-input">
-                  <option>Breakfast</option>
-                  <option>Lunch</option>
-                  <option>Dinner</option>
-                  <option>Snack</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label>Portionen</label>
-                <input v-model.number="mealForm.servings" class="form-input" type="number" min="1" />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Notizen</label>
-              <textarea v-model="mealForm.notes" class="form-input textarea"></textarea>
-            </div>
-          </div>
-
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="showMealModal = false">Abbrechen</button>
-            <button class="btn-save" @click="createMeal">Speichern</button>
-          </div>
+      <p v-if="calendarSubscriptions.length === 0" class="text-secondary small mb-0">Noch keine Kalender-Abos hinterlegt.</p>
+      <div v-else class="d-flex flex-column gap-2">
+        <div v-for="subscription in calendarSubscriptions" :key="subscription.id" class="border rounded p-2 bg-body-tertiary d-flex justify-content-between align-items-center gap-2">
+          <strong class="text-truncate">{{ subscription.url }}</strong>
+          <BButton size="sm" variant="outline-danger" @click="removeSubscription(subscription.id)">Entfernen</BButton>
         </div>
       </div>
-    </Teleport>
-
-    <Teleport to="body">
-      <div v-if="showSubscriptionModal" class="modal-backdrop" @click.self="showSubscriptionModal = false">
-        <div class="modal-box">
-          <div class="modal-header">
-            <h2>Kalender-Abos</h2>
-            <button class="modal-close" @click="showSubscriptionModal = false">✕</button>
-          </div>
-
-          <div class="modal-body">
-            <p class="modal-hint">ICS- oder Kalender-Feed-URL hinterlegen. Die Abos werden im Backend gespeichert und im Dashboard eingeblendet.</p>
-
-            <div class="form-row subscription-add-row">
-              <div class="form-group subscription-url-group">
-                <label>Kalender-URL</label>
-                <input v-model="subscriptionUrl" class="form-input" type="url" placeholder="https://…" />
-              </div>
-              <div class="form-group subscription-action-group">
-                <label>&nbsp;</label>
-                <button class="btn-save" @click="addSubscription">Hinzufügen</button>
-              </div>
-            </div>
-
-            <div v-if="calendarSubscriptions.length === 0" class="empty-state">Noch keine Kalender-Abos hinterlegt.</div>
-            <div v-else class="item-list">
-              <div v-for="subscription in calendarSubscriptions" :key="subscription.id" class="item-card">
-                <div class="item-main">
-                  <strong>{{ subscription.url }}</strong>
-                </div>
-                <button class="btn-delete" @click="removeSubscription(subscription.id)">Entfernen</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="modal-footer">
-            <button class="btn-cancel" @click="showSubscriptionModal = false">Schließen</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-  </div>
+    </BModal>
+  </BContainer>
 </template>
 
 <script setup lang="ts">
@@ -478,20 +398,20 @@ const syncStatusLabel = computed(() => {
 
   return 'Online'
 })
-const syncStatusClass = computed(() => {
+const syncStatusVariant = computed(() => {
   if (isSyncing.value) {
-    return 'sync-chip-syncing'
+    return 'info'
   }
 
   if (!isOnline.value) {
-    return pendingMutationCount.value > 0 ? 'sync-chip-pending' : 'sync-chip-offline'
+    return pendingMutationCount.value > 0 ? 'warning' : 'secondary'
   }
 
   if (pendingMutationCount.value > 0) {
-    return 'sync-chip-pending'
+    return 'warning'
   }
 
-  return 'sync-chip-online'
+  return 'success'
 })
 const offlineSnapshotLabel = computed(() => {
   if (!offlineSnapshotAt.value) {
@@ -1443,523 +1363,29 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.dashboard-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.page-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.page-title {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: -1px;
-}
-
-.title-accent { color: var(--primary); }
-
-.page-subtitle {
-  color: var(--text-muted);
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-.alert {
-  padding: 12px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.alert-error {
-  background: rgba(239,68,68,0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239,68,68,0.2);
-}
-
-.alert-success {
-  background: rgba(16,185,129,0.1);
-  color: #10b981;
-  border: 1px solid rgba(16,185,129,0.2);
-}
-
-.header-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.sync-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid transparent;
-}
-
-.sync-chip-online {
-  background: rgba(16,185,129,0.12);
-  color: #10b981;
-  border-color: rgba(16,185,129,0.22);
-}
-
-.sync-chip-offline {
-  background: rgba(107,114,128,0.12);
-  color: #6b7280;
-  border-color: rgba(107,114,128,0.2);
-}
-
-.sync-chip-pending {
-  background: rgba(245,158,11,0.12);
-  color: #d97706;
-  border-color: rgba(245,158,11,0.22);
-}
-
-.sync-chip-syncing {
-  background: rgba(59,130,246,0.12);
-  color: #2563eb;
-  border-color: rgba(59,130,246,0.22);
-}
-
-.btn-secondary,
-.btn-add-small,
-.btn-cancel,
-.btn-save {
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-secondary {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-}
-
-.btn-add-small {
-  border: none;
-  background: var(--primary);
-  color: white;
-}
-
-.btn-cancel {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text);
-}
-
-.btn-save {
-  border: none;
-  background: var(--primary);
-  color: white;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-
-@media (max-width: 900px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (max-width: 540px) {
-  .stats-grid { grid-template-columns: 1fr; }
-}
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 22px 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--border);
-}
-
-.stat-icon { font-size: 32px; z-index: 1; }
-.stat-info { display: flex; flex-direction: column; gap: 3px; z-index: 1; }
-.stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.stat-value {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text);
-}
-.stat-bg-shape {
-  position: absolute;
-  right: -20px;
-  top: -20px;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  opacity: 0.06;
-  background: var(--primary);
-}
-
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: 1.35fr 0.9fr;
-  gap: 20px;
-}
-
-@media (max-width: 980px) {
-  .dashboard-grid { grid-template-columns: 1fr; }
-}
-
-.calendar-card,
-.panel-card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--border);
-}
-
-.chart-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chart-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.chart-badge {
-  font-size: 12px;
-  padding: 4px 10px;
-  background: rgba(99,102,241,0.1);
-  color: var(--primary);
-  border-radius: 20px;
-  font-weight: 600;
-}
-
-.panel-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.calendar-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.calendar-weekdays span {
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 700;
-}
-
+/* Bootstrap hat keine 7-Spalten-Utility – minimales Grid für den Kalender. */
+.calendar-weekdays,
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 8px;
 }
-
+.calendar-weekdays span {
+  text-align: center;
+}
 .calendar-day {
   min-height: 110px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 10px;
-  text-align: left;
-  cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: all 0.15s ease;
+  cursor: pointer;
 }
-
-.calendar-day:hover {
-  transform: translateY(-1px);
-  border-color: var(--primary);
-}
-
-.calendar-day.muted {
-  opacity: 0.45;
-}
-
-.calendar-day.today {
-  border-color: var(--primary);
-}
-
 .calendar-day.selected {
-  box-shadow: inset 0 0 0 2px var(--primary);
+  box-shadow: inset 0 0 0 2px var(--bs-primary);
 }
-
-.day-number {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.day-indicators {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.indicator {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  width: fit-content;
-}
-
-.indicator-event {
-  background: rgba(99,102,241,0.12);
-  color: var(--primary);
-}
-
-.indicator-meal {
-  background: rgba(16,185,129,0.12);
-  color: #10b981;
-}
-
-.day-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.day-section h3 {
-  color: var(--text);
-  font-size: 15px;
-}
-
-.item-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.item-card {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.item-main {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.item-main strong {
-  color: var(--text);
-}
-
-.item-time,
-.item-notes,
-.empty-state {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.subscription-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  background: rgba(99,102,241,0.12);
-  color: var(--primary);
-}
-
-.item-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.btn-inline {
-  align-self: flex-end;
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.btn-delete {
-  align-self: flex-end;
-  border: none;
-  background: #ef4444;
-  color: white;
-  border-radius: 8px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-  backdrop-filter: blur(4px);
-}
-
-.modal-box {
-  background: var(--surface);
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 520px;
-  margin: 16px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-  border: 1px solid var(--border);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
-}
-
-.modal-header h2 {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  color: var(--text-muted);
-}
-
-.modal-body {
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.modal-hint {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1.5px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.subscription-add-row {
-  align-items: end;
-}
-
-.subscription-url-group {
-  grid-column: span 1;
-}
-
-.subscription-action-group {
-  min-width: 140px;
-}
-
-.form-group label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.form-input {
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1.5px solid var(--border);
-  background: var(--surface2);
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
-}
-
-.form-input:focus {
-  border-color: var(--primary);
-}
-
-.textarea {
-  min-height: 100px;
-  resize: vertical;
-}
-
-.modal-footer {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border);
+@media (max-width: 540px) {
+  .calendar-day {
+    min-height: 70px;
+  }
 }
 </style>
